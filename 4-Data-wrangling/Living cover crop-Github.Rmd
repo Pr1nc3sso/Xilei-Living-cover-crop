@@ -1,0 +1,607 @@
+---
+title: "Living cover crop- Github"
+output: html_document
+date: "2026-09-24"
+---
+
+```{r setup, include=FALSE}
+# ============================================================
+# Report settings
+# ============================================================
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = TRUE,
+  cache = FALSE,
+  fig.align = "center",
+  out.width = "100%",
+  dpi = 160
+)
+
+# ============================================================
+# Install and load packages
+# ============================================================
+
+packages <- c("readxl", "dplyr", "tidyr", "ggplot2")
+
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(
+      pkg,
+      repos = "https://cloud.r-project.org"
+    )
+  }
+}
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ============================================================
+# Download the workbook from the public GitHub repository
+# ============================================================
+
+github_url <- paste0(
+  "https://raw.githubusercontent.com/",
+  "Pr1nc3sso/Xilei-Living-cover-crop/",
+  "master/2-Data/Raw/Raw/",
+  "Broccoli%20harvest.xlsx"
+)
+
+file_path <- tempfile(
+  pattern = "Broccoli_harvest_",
+  fileext = ".xlsx"
+)
+
+options(timeout = max(120, getOption("timeout", 60)))
+
+download_status <- tryCatch(
+  utils::download.file(
+    url = github_url,
+    destfile = file_path,
+    method = "libcurl",
+    mode = "wb",
+    quiet = TRUE
+  ),
+  error = function(e) {
+    stop(
+      paste(
+        "Could not download the Excel workbook.",
+        "Check the repository visibility, file path,",
+        "branch name, and internet connection.",
+        conditionMessage(e)
+      ),
+      call. = FALSE
+    )
+  }
+)
+
+if (download_status != 0 ||
+    !file.exists(file_path) ||
+    file.info(file_path)$size == 0) {
+  stop(
+    "The workbook download failed or returned an empty file.",
+    call. = FALSE
+  )
+}
+
+# Save results beside the R Markdown document.
+output_dir <- file.path(
+  getwd(),
+  "Broccoli_R_results"
+)
+
+dir.create(
+  output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+# ============================================================
+# Read and clean the data
+# ============================================================
+
+raw <- readxl::read_excel(
+  path = file_path,
+  sheet = "living mulch",
+  range = readxl::cell_cols("A:E"),
+  col_types = c(
+    "date",
+    "text",
+    "text",
+    "text",
+    "numeric"
+  )
+)
+
+if (ncol(raw) != 5L) {
+  stop(
+    "The worksheet must contain the expected first five columns.",
+    call. = FALSE
+  )
+}
+
+names(raw) <- c(
+  "harvest_date",
+  "block",
+  "treatment",
+  "row_position",
+  "fresh_weight_g"
+)
+
+clean <- raw %>%
+  mutate(
+    harvest_date = as.Date(harvest_date),
+    across(
+      c(block, treatment, row_position),
+      ~ na_if(toupper(trimws(.x)), "")
+    )
+  ) %>%
+  filter(if_any(everything(), ~ !is.na(.x)))
+
+# Check identifiers before filtering to avoid silent exclusions.
+if (anyNA(clean[c("block", "treatment", "row_position")])) {
+  stop(
+    "Missing block, treatment, or row identifiers were found.",
+    call. = FALSE
+  )
+}
+
+if (any(!clean$treatment %in% c("T1", "T2", "T3", "T4"))) {
+  stop(
+    "Unexpected treatment identifiers were found.",
+    call. = FALSE
+  )
+}
+
+valid_rows <- c(
+  "E", "EAST",
+  "M", "MIDDLE", "CENTER", "CENTRE",
+  "W", "WEST"
+)
+
+if (any(!clean$row_position %in% valid_rows)) {
+  stop(
+    "Unexpected row-position labels were found.",
+    call. = FALSE
+  )
+}
+
+# Use middle-row records for the three mowing treatments.
+dat <- clean %>%
+  filter(
+    row_position %in% c("M", "MIDDLE", "CENTER", "CENTRE"),
+    treatment %in% c("T2", "T3", "T4")
+  )
+
+if (nrow(dat) == 0L) {
+  stop(
+    "No middle-row records were found for T2, T3, and T4.",
+    call. = FALSE
+  )
+}
+
+if (anyNA(dat)) {
+  stop(
+    "Missing dates or weights were found in the selected records.",
+    call. = FALSE
+  )
+}
+
+if (any(!is.finite(dat$fresh_weight_g)) ||
+    any(dat$fresh_weight_g <= 0)) {
+  stop(
+    "Selected fresh weights must be finite and greater than zero.",
+    call. = FALSE
+  )
+}
+
+if (any(!dat$block %in% c("B1", "B2", "B3", "B4"))) {
+  stop(
+    "Expected block identifiers B1, B2, B3, and B4.",
+    call. = FALSE
+  )
+}
+
+# ============================================================
+# Define treatment order and labels
+# ============================================================
+
+# T4: Mowing only before broccoli transplanting.
+# T3: Mowing once every two months.
+# T2: Mowing once per month.
+
+treatment_order <- c("T4", "T3", "T2")
+
+treatment_labels <- c(
+  T4 = "Pre-transplant\nonly (T4)",
+  T3 = "Every 2 months\n(T3)",
+  T2 = "Monthly\n(T2)"
+)
+
+treatment_colours <- c(
+  T4 = "#D16B32",
+  T3 = "#168C79",
+  T2 = "#2877B7"
+)
+
+dat <- dat %>%
+  mutate(
+    block = factor(
+      block,
+      levels = c("B1", "B2", "B3", "B4")
+    ),
+    treatment = factor(
+      treatment,
+      levels = treatment_order
+    )
+  )
+
+# Missing records must not automatically be treated as zero yield.
+if (any(table(dat$block, dat$treatment) == 0L)) {
+  stop(
+    "At least one Block x Treatment combination has no records.",
+    call. = FALSE
+  )
+}
+
+last_harvest_date <- max(dat$harvest_date)
+
+date_caption <- paste(
+  "Data through",
+  format(last_harvest_date, "%Y-%m-%d")
+)
+
+# ============================================================
+# Summarize each experimental plot
+# ============================================================
+
+# Each Block x Treatment combination is one experimental plot.
+# Pool all recorded harvest dates within each plot.
+# All recorded heads are included, regardless of marketability.
+# Areas are equal, but their exact sizes are unknown.
+# Report fresh weight per sampled middle row, not per square metre.
+
+plot_data <- dat %>%
+  group_by(block, treatment) %>%
+  summarise(
+    total_kg = sum(fresh_weight_g) / 1000,
+    head_count = n(),
+    mean_head_g = mean(fresh_weight_g),
+    .groups = "drop"
+  )
+
+metric_labels <- c(
+  "A  Harvested fresh weight\n(kg / middle row)",
+  "B  Harvested heads\n(number / middle row)",
+  "C  Mean head fresh weight\n(g / harvested head)"
+)
+
+plot_long <- plot_data %>%
+  pivot_longer(
+    cols = c(total_kg, head_count, mean_head_g),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  mutate(
+    metric = factor(
+      metric,
+      levels = c("total_kg", "head_count", "mean_head_g"),
+      labels = metric_labels
+    )
+  )
+
+# Calculate means and standard errors across plots.
+# Each plot receives equal weight.
+
+summary_data <- plot_long %>%
+  group_by(treatment, metric) %>%
+  summarise(
+    n_plots = n(),
+    mean_value = mean(value),
+    se_value = sd(value) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+## Harvest comparison
+
+Only middle-row records are included. Each treatment has four experimental
+plots. Coloured points represent individual plots. Black diamonds show
+treatment means, and error bars show one standard error across plots.
+These are descriptive summaries.
+
+```{r harvest-comparison, fig.width=15, fig.height=6.5}
+p_compare <- ggplot(
+  plot_long,
+  aes(x = treatment, y = value)
+) +
+  geom_point(
+    aes(colour = treatment, shape = block),
+    position = position_dodge(width = 0.55),
+    size = 3.2,
+    alpha = 0.9
+  ) +
+  geom_errorbar(
+    data = summary_data,
+    inherit.aes = FALSE,
+    aes(
+      x = treatment,
+      ymin = mean_value - se_value,
+      ymax = mean_value + se_value
+    ),
+    width = 0.14,
+    linewidth = 0.7,
+    colour = "black"
+  ) +
+  geom_point(
+    data = summary_data,
+    inherit.aes = FALSE,
+    aes(x = treatment, y = mean_value),
+    shape = 18,
+    size = 4.2,
+    colour = "black"
+  ) +
+  facet_wrap(
+    ~ metric,
+    scales = "free_y",
+    nrow = 1
+  ) +
+  scale_x_discrete(labels = treatment_labels) +
+  scale_colour_manual(
+    values = treatment_colours,
+    guide = "none"
+  ) +
+  scale_shape_manual(
+    values = c(B1 = 16, B2 = 17, B3 = 15, B4 = 8)
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0.02, 0.12))
+  ) +
+  expand_limits(y = 0) +
+  labs(
+    title = "Broccoli harvest across mowing regimes",
+    subtitle = paste(
+      date_caption,
+      "| Middle rows only | 4 plots per treatment"
+    ),
+    x = "Cover crop mowing regime",
+    y = NULL,
+    shape = "Block",
+    caption = paste0(
+      "Coloured points = individual plots; ",
+      "black diamonds = means; error bars = SE.\n",
+      "All recorded heads are included. ",
+      "Head-weight means give equal weight to each plot."
+    )
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    plot.subtitle = element_text(
+      size = 11,
+      margin = margin(b = 18)
+    ),
+    strip.background = element_blank(),
+    strip.text = element_text(
+      face = "bold",
+      size = 12,
+      margin = margin(b = 12)
+    ),
+    axis.text.x = element_text(
+      size = 10,
+      margin = margin(t = 8)
+    ),
+    axis.title.x = element_text(
+      margin = margin(t = 14)
+    ),
+    panel.spacing = grid::unit(1.2, "cm"),
+    panel.grid.major.y = element_line(
+      colour = "#E5E9EE",
+      linewidth = 0.4
+    ),
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0, size = 9),
+    plot.margin = margin(15, 20, 15, 15)
+  )
+
+print(p_compare)
+```
+
+## Cumulative harvest
+
+Thick lines show treatment means across four plots. Thin lines show
+individual plots. Dates without entries add no additional recorded weight;
+this does not establish that no harvest occurred on those dates.
+
+```{r cumulative-harvest, fig.width=11, fig.height=6}
+daily_harvest <- dat %>%
+  group_by(block, treatment, harvest_date) %>%
+  summarise(
+    daily_kg = sum(fresh_weight_g) / 1000,
+    .groups = "drop"
+  )
+
+date_grid <- tidyr::expand_grid(
+  block = levels(dat$block),
+  treatment = treatment_order,
+  harvest_date = seq(
+    min(dat$harvest_date),
+    last_harvest_date,
+    by = "day"
+  )
+)
+
+cumulative_data <- date_grid %>%
+  left_join(
+    daily_harvest,
+    by = c("block", "treatment", "harvest_date")
+  ) %>%
+  mutate(daily_kg = coalesce(daily_kg, 0)) %>%
+  arrange(block, treatment, harvest_date) %>%
+  group_by(block, treatment) %>%
+  mutate(cumulative_kg = cumsum(daily_kg)) %>%
+  ungroup()
+
+cumulative_means <- cumulative_data %>%
+  group_by(treatment, harvest_date) %>%
+  summarise(
+    mean_kg = mean(cumulative_kg),
+    .groups = "drop"
+  )
+
+p_cumulative <- ggplot() +
+  geom_step(
+    data = cumulative_data,
+    aes(
+      x = harvest_date,
+      y = cumulative_kg,
+      colour = treatment,
+      group = interaction(block, treatment)
+    ),
+    linewidth = 0.5,
+    alpha = 0.25
+  ) +
+  geom_step(
+    data = cumulative_means,
+    aes(
+      x = harvest_date,
+      y = mean_kg,
+      colour = treatment,
+      group = treatment
+    ),
+    linewidth = 1.2
+  ) +
+  scale_colour_manual(
+    values = treatment_colours,
+    breaks = treatment_order,
+    labels = unname(treatment_labels[treatment_order])
+  ) +
+  scale_x_date(
+    date_breaks = "1 week",
+    date_labels = "%b %d"
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.06))
+  ) +
+  labs(
+    title = "Cumulative broccoli harvest",
+    subtitle = date_caption,
+    x = "Harvest date",
+    y = "Cumulative fresh weight (kg / middle row)",
+    colour = "Mowing regime",
+    caption = paste(
+      "Middle rows only.",
+      "Thick lines = treatment means;",
+      "thin lines = individual plots."
+    )
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18),
+    legend.position = "bottom",
+    panel.grid.major.y = element_line(
+      colour = "#E5E9EE",
+      linewidth = 0.4
+    ),
+    plot.caption = element_text(hjust = 0, size = 9)
+  )
+
+print(p_cumulative)
+```
+
+## Treatment summary
+
+Means and standard errors are calculated across four plots per treatment.
+
+```{r treatment-summary}
+display_summary <- summary_data %>%
+  transmute(
+    Treatment = as.character(treatment),
+    Measurement = gsub("\n", " ", as.character(metric)),
+    Mean = mean_value,
+    SE = se_value,
+    Plots = n_plots
+  )
+
+knitr::kable(
+  display_summary,
+  digits = 2,
+  row.names = FALSE
+)
+```
+
+## Plot summary
+
+Each row represents one experimental plot.
+
+```{r plot-summary}
+display_plots <- plot_data %>%
+  transmute(
+    Block = block,
+    Treatment = treatment,
+    `Fresh weight (kg)` = total_kg,
+    `Harvested heads` = head_count,
+    `Mean head weight (g)` = mean_head_g
+  )
+
+knitr::kable(
+  display_plots,
+  digits = 2,
+  row.names = FALSE
+)
+```
+
+```{r save-results, include=FALSE}
+# Save both figures as PNG and PDF.
+
+figures <- list(
+  Broccoli_mowing_comparison = p_compare,
+  Broccoli_cumulative_harvest = p_cumulative
+)
+
+for (figure_name in names(figures)) {
+  is_comparison <- figure_name == "Broccoli_mowing_comparison"
+
+  figure_width <- if (is_comparison) 15 else 11
+  figure_height <- if (is_comparison) 6.5 else 6
+
+  for (extension in c("png", "pdf")) {
+    ggsave(
+      filename = file.path(
+        output_dir,
+        paste0(figure_name, ".", extension)
+      ),
+      plot = figures[[figure_name]],
+      width = figure_width,
+      height = figure_height,
+      units = "in",
+      dpi = 300,
+      bg = "white"
+    )
+  }
+}
+
+# Save numerical summaries.
+
+write.csv(
+  plot_data,
+  file.path(output_dir, "Plot_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  summary_data,
+  file.path(output_dir, "Treatment_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  cumulative_data,
+  file.path(output_dir, "Cumulative_harvest_by_plot.csv"),
+  row.names = FALSE
+)
+```
