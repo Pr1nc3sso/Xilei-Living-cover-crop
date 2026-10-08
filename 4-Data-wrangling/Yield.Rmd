@@ -1,0 +1,361 @@
+---
+title: "Yield"
+output: html_document
+date: "2026-10-08"
+---
+
+---
+title: "Broccoli Yield: Randomized Complete Block Analysis"
+output:
+  bookdown::pdf_document2:
+    keep_tex: true
+    toc: false
+    number_sections: false
+    extra_dependencies: ["float"]
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = TRUE,
+  fig.pos = "H",
+  fig.width = 7,
+  fig.height = 4.5
+)
+
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(emmeans)
+
+# Download the workbook from GitHub.
+github_base <- paste0(
+  "https://raw.githubusercontent.com/Pr1nc3sso/",
+  "Xilei-Living-cover-crop/master/2-Data/Raw/Raw/"
+)
+
+file_url <- paste0(github_base, "Broccoli%20harvest.xlsx")
+file_path <- tempfile(fileext = ".xlsx")
+
+options(timeout = max(120, getOption("timeout", 60)))
+
+status <- download.file(
+  file_url,
+  file_path,
+  mode = "wb",
+  method = "libcurl",
+  quiet = TRUE
+)
+
+if (status != 0L) {
+  stop("GitHub download failed. Check the URL.")
+}
+
+output_dir <- file.path(getwd(), "Yield_results")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Read the first nine columns.
+raw <- read_excel(
+  file_path,
+  sheet = "living mulch",
+  range = cell_cols("A:I"),
+  col_types = "text"
+)
+
+names(raw) <- c(
+  "harvest_date", "block", "treatment", "row_position",
+  "fresh_weight_g", "grade", "appearance_note",
+  "hollow_core", "marketable"
+)
+
+raw$excel_row <- seq_len(nrow(raw)) + 1L
+
+dat <- raw %>%
+  mutate(
+    across(
+      c(block, treatment, row_position, marketable),
+      ~ na_if(toupper(trimws(.x)), "")
+    )
+  ) %>%
+  filter(
+    if_any(
+      c(block, treatment, row_position, fresh_weight_g),
+      ~ !is.na(.x)
+    )
+  )
+
+if (anyNA(dat[c("block", "treatment", "row_position")])) {
+  stop("Missing identifiers. Check the source workbook.")
+}
+
+valid_rows <- c(
+  "E", "EAST",
+  "M", "MIDDLE", "CENTER", "CENTRE",
+  "W", "WEST"
+)
+
+if (any(!dat$treatment %in% c("T1", "T2", "T3", "T4")) ||
+    any(!dat$row_position %in% valid_rows)) {
+  stop("Unexpected treatment or row labels.")
+}
+
+# Only middle-row heads enter the yield analysis.
+dat <- dat %>%
+  filter(
+    treatment %in% c("T2", "T3", "T4"),
+    row_position %in% c("M", "MIDDLE", "CENTER", "CENTRE")
+  ) %>%
+  mutate(fresh_weight_g = as.numeric(fresh_weight_g))
+
+if (nrow(dat) == 0L ||
+    anyNA(dat$fresh_weight_g) ||
+    any(!is.finite(dat$fresh_weight_g)) ||
+    any(dat$fresh_weight_g <= 0)) {
+  stop("Missing or invalid middle-row head weights.")
+}
+
+if (any(!dat$block %in% paste0("B", 1:4))) {
+  stop("Unexpected block labels.")
+}
+
+dat <- dat %>%
+  mutate(
+    block = factor(block, levels = paste0("B", 1:4)),
+    treatment = factor(
+      treatment,
+      levels = c("T4", "T3", "T2")
+    )
+  )
+
+if (any(table(dat$block, dat$treatment) == 0L)) {
+  stop("A plot has no harvest records; do not assume zero yield.")
+}
+
+# Each plot, not each individual head, is a replicate.
+# Pool all harvest dates within each plot.
+plot_data <- dat %>%
+  group_by(block, treatment) %>%
+  summarise(
+    yield_kg = sum(fresh_weight_g) / 1000,
+    heads = n(),
+    mean_head_g = mean(fresh_weight_g),
+    .groups = "drop"
+  )
+
+stopifnot(nrow(plot_data) == 12L)
+
+# Randomized complete block model.
+fit <- lm(
+  yield_kg ~ treatment + block,
+  data = plot_data
+)
+
+anova_result <- anova(fit)
+
+# Adjusted treatment means and Tukey comparisons.
+emm <- emmeans(
+  fit,
+  ~ treatment,
+  weights = "equal"
+)
+
+emm_table <- as.data.frame(
+  confint(emm, level = 0.95)
+)
+
+tukey_table <- as.data.frame(
+  summary(
+    pairs(emm, adjust = "tukey"),
+    infer = c(TRUE, TRUE)
+  )
+)
+
+treatment_labels <- c(
+  T4 = "Pre-transplant\nonly (T4)",
+  T3 = "Every 2 months\n(T3)",
+  T2 = "Monthly\n(T2)"
+)
+```
+
+## Response and experimental unit
+
+The response is total harvested fresh weight in kilograms per middle row,
+pooled over all recorded harvest dates. All weighed heads are included.
+This is not marketable yield.
+
+Equal middle-row harvest areas are assumed. Their exact sizes are unknown,
+so yield is not expressed per square metre.
+
+The analysis includes three mowing treatments and four blocks.
+Each block-by-treatment plot is one replicate. Outer rows and the separate
+plastic-mulch sheet are not included.
+
+With one response per plot, the treatment-by-block interaction cannot be
+estimated separately from residual error. The model assumes additive
+treatment and block effects.
+
+```{r plot-data}
+knitr::kable(
+  plot_data,
+  digits = 3,
+  row.names = FALSE
+)
+```
+
+## Analysis of variance
+
+Treatment and block are fitted as fixed factors. The design is balanced,
+with treatment, block and residual degrees of freedom of 2, 3 and 6.
+
+```{r anova}
+knitr::kable(
+  anova_result,
+  digits = 5
+)
+```
+
+## Adjusted treatment means
+
+Means are adjusted for block.
+The intervals below are individual 95% confidence intervals.
+
+```{r adjusted-means}
+knitr::kable(
+  emm_table,
+  digits = 3,
+  row.names = FALSE
+)
+```
+
+## Tukey pairwise comparisons
+
+P values and confidence intervals are adjusted across the three treatment
+pairs. Use these comparisons to assess treatment differences rather than
+judging overlap between the confidence intervals of individual means.
+
+```{r tukey}
+knitr::kable(
+  tukey_table,
+  digits = 4,
+  row.names = FALSE
+)
+```
+
+## Yield figure
+
+```{r yield-figure}
+p <- ggplot(
+  plot_data,
+  aes(x = treatment, y = yield_kg)
+) +
+  geom_point(
+    aes(shape = block),
+    position = position_dodge(width = 0.4),
+    size = 2.5
+  ) +
+  geom_errorbar(
+    data = emm_table,
+    inherit.aes = FALSE,
+    aes(
+      x = treatment,
+      ymin = lower.CL,
+      ymax = upper.CL
+    ),
+    width = 0.12,
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = emm_table,
+    inherit.aes = FALSE,
+    aes(x = treatment, y = emmean),
+    shape = 18,
+    size = 4
+  ) +
+  scale_x_discrete(labels = treatment_labels) +
+  expand_limits(y = 0) +
+  labs(
+    x = "Cover crop mowing regime",
+    y = "Harvested fresh weight (kg / middle row)",
+    shape = "Block",
+    caption = paste(
+      "Small points = plots; diamonds = adjusted means;",
+      "bars = 95% CI."
+    )
+  ) +
+  theme_classic(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    plot.caption = element_text(hjust = 0)
+  )
+
+print(p)
+```
+
+## Model diagnostics
+
+Inspect residual spread and the normal Q-Q plot before interpreting the
+tests. A non-significant Shapiro-Wilk test does not prove normality.
+
+```{r diagnostics, fig.height=3.5}
+par(mfrow = c(1, 2))
+
+plot(fit, which = 1)
+plot(fit, which = 2)
+
+par(mfrow = c(1, 1))
+
+shapiro.test(residuals(fit))
+```
+
+```{r save-results, include=FALSE}
+write.csv(
+  plot_data,
+  file.path(output_dir, "Plot_yield.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  anova_result,
+  file.path(output_dir, "ANOVA.csv")
+)
+
+write.csv(
+  emm_table,
+  file.path(output_dir, "Adjusted_means.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  tukey_table,
+  file.path(output_dir, "Tukey_comparisons.csv"),
+  row.names = FALSE
+)
+
+saveRDS(
+  fit,
+  file.path(output_dir, "Yield_model.rds")
+)
+
+ggsave(
+  file.path(output_dir, "Yield_ANOVA.png"),
+  plot = p,
+  width = 7,
+  height = 4.5,
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  file.path(output_dir, "Yield_ANOVA.pdf"),
+  plot = p,
+  width = 7,
+  height = 4.5,
+  bg = "white"
+)
+
+capture.output(
+  sessionInfo(),
+  file = file.path(output_dir, "Session_info.txt")
+)
+```
