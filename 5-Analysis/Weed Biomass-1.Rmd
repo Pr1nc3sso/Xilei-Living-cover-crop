@@ -5,7 +5,7 @@ date: "2026-10-21"
 ---
 
 ---
-title: "Total Vegetation Biomass: Effects of Mowing Frequency"
+title: "Total Vegetation Biomass: Effects of Mowing Schedule"
 output:
   bookdown::pdf_document2:
     keep_tex: true
@@ -35,15 +35,19 @@ library(emmeans)
 output_dir <- file.path("outputs", "biomass")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# Treatment definitions from protocol v4.
-# All three treatments were mown before transplanting.
-# These intervals describe mowing after transplanting.
+# Confirmed mowing schedule relative to broccoli transplanting:
+# T2: 1 week before, and 3 and 6 weeks after transplanting.
+# T3: 1 week before, and 6 weeks after transplanting.
+# T4: 1 week before transplanting only.
+#
+# Treatments remain categorical factors in the statistical model.
+
 treatment_levels <- c("T4", "T3", "T2")
 
 treatment_labels <- c(
-  T4 = "T4\nEvery 6 weeks",
-  T3 = "T3\nEvery 4 weeks",
-  T2 = "T2\nEvery 2 weeks"
+  T4 = "T4\n-1 week",
+  T3 = "T3\n-1 and +6 weeks",
+  T2 = "T2\n-1, +3 and +6 weeks"
 )
 
 treatment_colours <- c(
@@ -65,12 +69,14 @@ save_csv <- function(x, filename) {
 
 show_table <- function(x, caption, digits = 4) {
   cat("\n\n")
+
   print(knitr::kable(
     x,
     caption = caption,
     digits = digits,
     row.names = FALSE
   ))
+
   cat("\n\n")
 }
 
@@ -88,17 +94,20 @@ make_anova_table <- function(model) {
 
 ## Research question
 
-Does mowing frequency affect total recorded vegetation biomass
+Does mowing treatment affect total recorded vegetation biomass
 at broccoli harvest?
 
-All three planted treatments were mown before broccoli transplanting.
-After transplanting, mowing followed the protocol:
+All three treatments were mown one week before broccoli transplanting.
+Additional mowing followed the treatment-specific schedule:
 
-- **T2:** mown every 2 weeks.
-- **T3:** mown every 4 weeks.
-- **T4:** mown every 6 weeks.
+- **T2:** mown at 3 and 6 weeks after transplanting,
+  giving three mowing events in total.
+- **T3:** mown at 6 weeks after transplanting,
+  giving two mowing events in total.
+- **T4:** no additional mowing after transplanting,
+  giving one mowing event in total.
 
-The analysis includes T2, T3, and T4 in four blocks.
+The analysis compares T2, T3, and T4 in four blocks.
 
 All recorded species are included, including clovers and unidentified
 taxa. The response is therefore total vegetation biomass.
@@ -116,7 +125,7 @@ Recorded masses are summed within each quadrat and divided by
 quadrat area. The two quadrat densities are then averaged within
 each plot and sampling location.
 
-The plot is the experimental unit. Each location contains
+The plot is the experimental unit. Each sampling location contains
 12 plot means: three treatments in four blocks.
 
 For each location, the model is:
@@ -187,13 +196,16 @@ raw$excel_row <- seq_len(nrow(raw)) + 1L
 raw <- raw[rowSums(!is.na(raw[1:10])) > 0, ]
 
 # Compare only the ten original columns for exact duplicates.
-# Do not remove records merely because their species labels match.
+# Records are not removed merely because their species labels match.
 duplicate_flag <- duplicated(as.data.frame(raw[1:10]))
 
 removed_duplicates <- raw[duplicate_flag, ]
 clean <- raw[!duplicate_flag, ]
 
-save_csv(removed_duplicates, "removed_exact_duplicates.csv")
+save_csv(
+  removed_duplicates,
+  "removed_exact_duplicates.csv"
+)
 
 names(clean)[1:10] <- c(
   "collection_date",
@@ -218,8 +230,13 @@ clean <- clean %>%
     species = toupper(trimws(species))
   )
 
-# Check identifiers and biomass weights.
-numeric_fields <- c("block", "treatment", "quadrat", "weight_g")
+# Validate identifiers and biomass weights.
+numeric_fields <- c(
+  "block",
+  "treatment",
+  "quadrat",
+  "weight_g"
+)
 
 if (any(!is.finite(as.matrix(clean[numeric_fields])))) {
   stop("Missing or invalid identifiers or biomass weights.")
@@ -249,10 +266,14 @@ if (any(!analysis_records$location %in% locations)) {
   stop("Unexpected or missing sampling-location labels.")
 }
 
-# Apply the confirmed areas while retaining source values.
+# Apply the confirmed areas while retaining the source values.
 analysis_records <- analysis_records %>%
   mutate(
-    area_m2 = if_else(location == "Broccoli", 0.28, 0.16)
+    area_m2 = if_else(
+      location == "Broccoli",
+      0.28,
+      0.16
+    )
   )
 
 area_corrections <- analysis_records %>%
@@ -261,14 +282,24 @@ area_corrections <- analysis_records %>%
       abs(source_area_m2 - area_m2) > 1e-10
   )
 
-save_csv(area_corrections, "area_corrections.csv")
-save_csv(analysis_records, "clean_T2_T4_records.csv")
+save_csv(
+  area_corrections,
+  "area_corrections.csv"
+)
+
+save_csv(
+  analysis_records,
+  "clean_T2_T4_records.csv"
+)
 
 # Avoid combining different collection dates within a quadrat.
 date_check <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
-    n_dates = n_distinct(collection_date, na.rm = TRUE),
+    n_dates = n_distinct(
+      collection_date,
+      na.rm = TRUE
+    ),
     .groups = "drop"
   )
 
@@ -276,7 +307,7 @@ if (any(date_check$n_dates != 1)) {
   stop("Check missing or multiple collection dates within quadrats.")
 }
 
-# Sum all species and retained sample records within each quadrat.
+# Sum all species and retained records within each quadrat.
 quadrat_data <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
@@ -288,7 +319,8 @@ quadrat_data <- analysis_records %>%
     biomass_g_m2 = total_weight_g / area_m2
   )
 
-# Expected layout: 48 quadrats.
+# Expected layout:
+# 4 blocks x 3 treatments x 2 locations x 2 quadrats = 48 quadrats.
 expected_quadrats <- expand_grid(
   block = 1:4,
   treatment = 2:4,
@@ -296,18 +328,34 @@ expected_quadrats <- expand_grid(
   quadrat = 1:2
 )
 
-keys <- c("block", "treatment", "location", "quadrat")
+keys <- c(
+  "block",
+  "treatment",
+  "location",
+  "quadrat"
+)
 
 missing_quadrats <- anti_join(
-  expected_quadrats, quadrat_data, by = keys
+  expected_quadrats,
+  quadrat_data,
+  by = keys
 )
 
 unexpected_quadrats <- anti_join(
-  quadrat_data, expected_quadrats, by = keys
+  quadrat_data,
+  expected_quadrats,
+  by = keys
 )
 
-save_csv(missing_quadrats, "missing_quadrats.csv")
-save_csv(unexpected_quadrats, "unexpected_quadrats.csv")
+save_csv(
+  missing_quadrats,
+  "missing_quadrats.csv"
+)
+
+save_csv(
+  unexpected_quadrats,
+  "unexpected_quadrats.csv"
+)
 
 if (
   nrow(missing_quadrats) > 0 ||
@@ -343,16 +391,32 @@ if (any(plot_data$n_quadrats != 2)) {
   stop("Each plot and sampling location must contain two quadrats.")
 }
 
-save_csv(quadrat_data, "quadrat_biomass.csv")
-save_csv(plot_data, "plot_biomass.csv")
+save_csv(
+  quadrat_data,
+  "quadrat_biomass.csv"
+)
 
+save_csv(
+  plot_data,
+  "plot_biomass.csv"
+)
+
+# Save source information and the confirmed treatment descriptions.
 writeLines(
   c(
     paste("Source:", github_url),
-    paste("Downloaded at UTC:", format(Sys.time(), tz = "UTC")),
-    paste("File MD5:", unname(tools::md5sum(excel_file))),
-    "Protocol: all T2-T4 treatments mown before transplanting.",
-    "After transplanting: T2 every 2 weeks; T3 every 4 weeks; T4 every 6 weeks."
+    paste(
+      "Downloaded at UTC:",
+      format(Sys.time(), tz = "UTC")
+    ),
+    paste(
+      "File MD5:",
+      unname(tools::md5sum(excel_file))
+    ),
+    "All T2-T4 treatments: mown 1 week before transplanting.",
+    "T2: additional mowing at 3 and 6 weeks after transplanting.",
+    "T3: additional mowing at 6 weeks after transplanting.",
+    "T4: no additional mowing after transplanting."
   ),
   file.path(output_dir, "data_source.txt")
 )
@@ -400,6 +464,7 @@ analyse_location <- function(location_name) {
   d <- plot_data %>%
     filter(location == location_name)
 
+  # Verify one plot mean per block-treatment combination.
   if (
     nrow(d) != 12 ||
     !all(table(d$block, d$treatment) == 1)
@@ -407,14 +472,14 @@ analyse_location <- function(location_name) {
     stop("Expected one plot mean for each block-treatment combination.")
   }
 
-  # Primary ANOVA model.
+  # Primary model: treatment and block as categorical effects.
   fit <- lm(
     biomass_g_m2 ~ treatment + block,
     data = d,
     na.action = na.fail
   )
 
-  # In this balanced design, treatment and block are orthogonal.
+  # Treatment and block are orthogonal in this balanced design.
   a <- anova(fit)
   anova_results <- make_anova_table(fit)
 
@@ -425,10 +490,16 @@ analyse_location <- function(location_name) {
     weights = "equal"
   )
 
+  # Individual 95% confidence intervals for adjusted means.
   mean_results <- as.data.frame(
-    confint(emm, level = 0.95, adjust = "none")
+    confint(
+      emm,
+      level = 0.95,
+      adjust = "none"
+    )
   )
 
+  # Tukey-adjusted comparisons within this sampling location.
   tukey_results <- as.data.frame(
     summary(
       pairs(emm, adjust = "tukey"),
@@ -437,7 +508,7 @@ analyse_location <- function(location_name) {
     )
   )
 
-  # Plot observed plot means and model-adjusted means.
+  # Observed plot means and model-adjusted treatment means.
   figure <- ggplot() +
     geom_point(
       data = d,
@@ -468,32 +539,49 @@ analyse_location <- function(location_name) {
     ) +
     geom_point(
       data = mean_results,
-      aes(x = treatment, y = emmean),
+      aes(
+        x = treatment,
+        y = emmean
+      ),
       shape = 18,
       size = 3.8,
       colour = "black"
     ) +
-    scale_x_discrete(labels = treatment_labels) +
-    scale_colour_manual(values = treatment_colours) +
-    scale_shape_manual(values = c(16, 17, 15, 3)) +
+    scale_x_discrete(
+      labels = treatment_labels
+    ) +
+    scale_colour_manual(
+      values = treatment_colours
+    ) +
+    scale_shape_manual(
+      values = c(16, 17, 15, 3)
+    ) +
     expand_limits(y = 0) +
     labs(
-      title = paste("Total vegetation biomass:", location_name),
+      title = paste(
+        "Total vegetation biomass:",
+        location_name
+      ),
       subtitle = sprintf(
         "Treatment ANOVA: F(2, %d) = %.3f, p = %.4f",
         df.residual(fit),
         a["treatment", "F value"],
         a["treatment", "Pr(>F)"]
       ),
-      x = "Mowing interval after transplanting",
-      y = expression("Vegetation biomass (g " * m^{-2} * ")"),
+      x = "Mowing times relative to transplanting",
+      y = expression(
+        "Vegetation biomass (g " * m^{-2} * ")"
+      ),
       shape = "Block",
       caption = paste0(
+        "Negative weeks: before transplanting; positive weeks: after transplanting.\n",
         "Coloured points: plot means of two quadrats.\n",
         "Black diamonds: adjusted means; bars: 95% confidence intervals."
       )
     ) +
-    guides(colour = "none") +
+    guides(
+      colour = "none"
+    ) +
     theme_bw(base_size = 11) +
     theme(
       legend.position = "bottom",
@@ -501,14 +589,30 @@ analyse_location <- function(location_name) {
       plot.caption = element_text(hjust = 0)
     )
 
-  prefix <- tolower(gsub(" ", "_", location_name))
+  prefix <- tolower(
+    gsub(" ", "_", location_name)
+  )
 
-  save_csv(anova_results, paste0(prefix, "_anova.csv"))
-  save_csv(mean_results, paste0(prefix, "_adjusted_means.csv"))
-  save_csv(tukey_results, paste0(prefix, "_tukey.csv"))
+  save_csv(
+    anova_results,
+    paste0(prefix, "_anova.csv")
+  )
+
+  save_csv(
+    mean_results,
+    paste0(prefix, "_adjusted_means.csv")
+  )
+
+  save_csv(
+    tukey_results,
+    paste0(prefix, "_tukey.csv")
+  )
 
   ggsave(
-    file.path(output_dir, paste0(prefix, "_biomass.png")),
+    filename = file.path(
+      output_dir,
+      paste0(prefix, "_biomass.png")
+    ),
     plot = figure,
     width = 7,
     height = 4.8,
@@ -516,7 +620,10 @@ analyse_location <- function(location_name) {
   )
 
   ggsave(
-    file.path(output_dir, paste0(prefix, "_biomass.pdf")),
+    filename = file.path(
+      output_dir,
+      paste0(prefix, "_biomass.pdf")
+    ),
     plot = figure,
     width = 7,
     height = 4.8
@@ -551,8 +658,15 @@ analyse_location <- function(location_name) {
       )
     )
 
-    save_csv(log_anova, paste0(prefix, "_log_anova.csv"))
-    save_csv(log_tukey, paste0(prefix, "_log_tukey.csv"))
+    save_csv(
+      log_anova,
+      paste0(prefix, "_log_anova.csv")
+    )
+
+    save_csv(
+      log_tukey,
+      paste0(prefix, "_log_tukey.csv")
+    )
   }
 
   list(
@@ -576,22 +690,44 @@ report_location <- function(result) {
 
   show_table(
     result$anova,
-    paste(result$location, "- ANOVA")
+    paste(
+      result$location,
+      "- ANOVA"
+    )
   )
 
   show_table(
     result$means %>%
-      select(treatment, emmean, SE, lower.CL, upper.CL),
-    paste(result$location, "- adjusted means and 95% confidence intervals")
+      select(
+        treatment,
+        emmean,
+        SE,
+        lower.CL,
+        upper.CL
+      ),
+    paste(
+      result$location,
+      "- adjusted means and 95% confidence intervals"
+    )
   )
 
   show_table(
     result$tukey %>%
-      select(contrast, estimate, lower.CL, upper.CL, p.value),
-    paste(result$location, "- Tukey-adjusted pairwise comparisons")
+      select(
+        contrast,
+        estimate,
+        lower.CL,
+        upper.CL,
+        p.value
+      ),
+    paste(
+      result$location,
+      "- Tukey-adjusted pairwise comparisons"
+    )
   )
 
   print(result$figure)
+
   invisible(NULL)
 }
 ```
@@ -625,16 +761,20 @@ Shapiro-Wilk tests are supplementary. A nonsignificant normality
 test does not establish that all model assumptions are satisfied.
 
 ```{r normality-tests}
-normality_results <- bind_rows(lapply(results, function(result) {
+normality_results <- bind_rows(
+  lapply(results, function(result) {
 
-  test <- shapiro.test(residuals(result$fit))
+    test <- shapiro.test(
+      residuals(result$fit)
+    )
 
-  data.frame(
-    Location = result$location,
-    W = unname(test$statistic),
-    p_value = test$p.value
-  )
-}))
+    data.frame(
+      Location = result$location,
+      W = unname(test$statistic),
+      p_value = test$p.value
+    )
+  })
+)
 
 knitr::kable(
   normality_results,
@@ -642,7 +782,10 @@ knitr::kable(
   caption = "Shapiro-Wilk tests of model residuals"
 )
 
-save_csv(normality_results, "residual_normality.csv")
+save_csv(
+  normality_results,
+  "residual_normality.csv"
+)
 ```
 
 ### Broccoli model
@@ -688,26 +831,45 @@ for (location_name in locations) {
 
   result <- results[[location_name]]
 
-  cat("\n\n### ", location_name, "\n\n", sep = "")
+  cat(
+    "\n\n### ",
+    location_name,
+    "\n\n",
+    sep = ""
+  )
 
   if (is.null(result$log_anova)) {
+
     cat(
       "Log-scale analysis was skipped because at least one ",
       "plot mean was zero or negative.\n\n",
       sep = ""
     )
+
     next
   }
 
   show_table(
     result$log_anova,
-    paste(location_name, "- log-scale ANOVA")
+    paste(
+      location_name,
+      "- log-scale ANOVA"
+    )
   )
 
   show_table(
     result$log_tukey %>%
-      select(contrast, estimate, lower.CL, upper.CL, p.value),
-    paste(location_name, "- Tukey comparisons on the natural-log scale")
+      select(
+        contrast,
+        estimate,
+        lower.CL,
+        upper.CL,
+        p.value
+      ),
+    paste(
+      location_name,
+      "- Tukey comparisons on the natural-log scale"
+    )
   )
 }
 ```
@@ -716,6 +878,12 @@ for (location_name in locations) {
 
 Treatment differences are interpreted separately for the two
 sampling locations because their sampling protocols differ.
+
+The treatment comparison concerns three mowing schedules:
+
+- T2: one mowing event before transplanting and two after transplanting.
+- T3: one mowing event before transplanting and one after transplanting.
+- T4: one mowing event before transplanting only.
 
 A nonsignificant result indicates insufficient evidence of a
 treatment difference under the fitted model. It does not demonstrate
@@ -731,6 +899,9 @@ effects on weed-only biomass or broccoli yield.
 ```{r save-session-information, include=FALSE}
 capture.output(
   sessionInfo(),
-  file = file.path(output_dir, "session_info.txt")
+  file = file.path(
+    output_dir,
+    "session_info.txt"
+  )
 )
 ```
