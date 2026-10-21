@@ -30,12 +30,17 @@ library(ggplot2)
 library(emmeans)
 
 # Download the workbook from GitHub.
+# The source folder is 2-Data/Raw/.
 github_base <- paste0(
   "https://raw.githubusercontent.com/Pr1nc3sso/",
-  "Xilei-Living-cover-crop/master/2-Data/Raw/Raw/"
+  "Xilei-Living-cover-crop/master/2-Data/Raw/"
 )
 
-file_url <- paste0(github_base, "Broccoli%20harvest.xlsx")
+file_url <- paste0(
+  github_base,
+  "Broccoli%20harvest.xlsx"
+)
+
 file_path <- tempfile(fileext = ".xlsx")
 
 options(timeout = max(120, getOption("timeout", 60)))
@@ -52,8 +57,16 @@ if (status != 0L) {
   stop("GitHub download failed. Check the URL.")
 }
 
-output_dir <- file.path(getwd(), "Yield_results")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+output_dir <- file.path(
+  getwd(),
+  "Yield_results"
+)
+
+dir.create(
+  output_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 
 # Read the first nine columns.
 raw <- read_excel(
@@ -64,9 +77,15 @@ raw <- read_excel(
 )
 
 names(raw) <- c(
-  "harvest_date", "block", "treatment", "row_position",
-  "fresh_weight_g", "grade", "appearance_note",
-  "hollow_core", "marketable"
+  "harvest_date",
+  "block",
+  "treatment",
+  "row_position",
+  "fresh_weight_g",
+  "grade",
+  "appearance_note",
+  "hollow_core",
+  "marketable"
 )
 
 raw$excel_row <- seq_len(nrow(raw)) + 1L
@@ -95,8 +114,10 @@ valid_rows <- c(
   "W", "WEST"
 )
 
-if (any(!dat$treatment %in% c("T1", "T2", "T3", "T4")) ||
-    any(!dat$row_position %in% valid_rows)) {
+if (
+  any(!dat$treatment %in% c("T1", "T2", "T3", "T4")) ||
+  any(!dat$row_position %in% valid_rows)
+) {
   stop("Unexpected treatment or row labels.")
 }
 
@@ -104,14 +125,20 @@ if (any(!dat$treatment %in% c("T1", "T2", "T3", "T4")) ||
 dat <- dat %>%
   filter(
     treatment %in% c("T2", "T3", "T4"),
-    row_position %in% c("M", "MIDDLE", "CENTER", "CENTRE")
+    row_position %in% c(
+      "M", "MIDDLE", "CENTER", "CENTRE"
+    )
   ) %>%
-  mutate(fresh_weight_g = as.numeric(fresh_weight_g))
+  mutate(
+    fresh_weight_g = as.numeric(fresh_weight_g)
+  )
 
-if (nrow(dat) == 0L ||
-    anyNA(dat$fresh_weight_g) ||
-    any(!is.finite(dat$fresh_weight_g)) ||
-    any(dat$fresh_weight_g <= 0)) {
+if (
+  nrow(dat) == 0L ||
+  anyNA(dat$fresh_weight_g) ||
+  any(!is.finite(dat$fresh_weight_g)) ||
+  any(dat$fresh_weight_g <= 0)
+) {
   stop("Missing or invalid middle-row head weights.")
 }
 
@@ -121,7 +148,10 @@ if (any(!dat$block %in% paste0("B", 1:4))) {
 
 dat <- dat %>%
   mutate(
-    block = factor(block, levels = paste0("B", 1:4)),
+    block = factor(
+      block,
+      levels = paste0("B", 1:4)
+    ),
     treatment = factor(
       treatment,
       levels = c("T4", "T3", "T2")
@@ -146,6 +176,7 @@ plot_data <- dat %>%
 stopifnot(nrow(plot_data) == 12L)
 
 # Randomized complete block model.
+# Treatment remains a categorical factor.
 fit <- lm(
   yield_kg ~ treatment + block,
   data = plot_data
@@ -161,7 +192,10 @@ emm <- emmeans(
 )
 
 emm_table <- as.data.frame(
-  confint(emm, level = 0.95)
+  confint(
+    emm,
+    level = 0.95
+  )
 )
 
 tukey_table <- as.data.frame(
@@ -171,12 +205,35 @@ tukey_table <- as.data.frame(
   )
 )
 
+# Confirmed mowing times relative to broccoli transplanting:
+# T2: 1 week before, and 3 and 6 weeks after transplanting.
+# T3: 1 week before, and 6 weeks after transplanting.
+# T4: 1 week before transplanting only.
+#
+# Negative weeks indicate time before transplanting.
+# Positive weeks indicate time after transplanting.
 treatment_labels <- c(
-  T4 = "Pre-transplant\nonly (T4)",
-  T3 = "Every 2 months\n(T3)",
-  T2 = "Monthly\n(T2)"
+  T4 = "T4\n-1 week",
+  T3 = "T3\n-1 and +6 weeks",
+  T2 = "T2\n-1, +3 and +6 weeks"
 )
 ```
+
+## Mowing schedule
+
+All three treatments were mown one week before broccoli transplanting.
+Additional mowing followed the treatment-specific schedule:
+
+- **T2:** mown at 3 and 6 weeks after transplanting,
+  giving three mowing events in total.
+- **T3:** mown at 6 weeks after transplanting,
+  giving two mowing events in total.
+- **T4:** no additional mowing after transplanting,
+  giving one mowing event in total.
+
+The analysis compares these three treatment categories.
+Mowing times and the number of mowing events are not entered
+as continuous predictors.
 
 ## Response and experimental unit
 
@@ -244,10 +301,16 @@ knitr::kable(
 
 ## Yield figure
 
+Negative weeks on the horizontal axis indicate mowing before transplanting.
+Positive weeks indicate mowing after transplanting.
+
 ```{r yield-figure}
 p <- ggplot(
   plot_data,
-  aes(x = treatment, y = yield_kg)
+  aes(
+    x = treatment,
+    y = yield_kg
+  )
 ) +
   geom_point(
     aes(shape = block),
@@ -268,19 +331,24 @@ p <- ggplot(
   geom_point(
     data = emm_table,
     inherit.aes = FALSE,
-    aes(x = treatment, y = emmean),
+    aes(
+      x = treatment,
+      y = emmean
+    ),
     shape = 18,
     size = 4
   ) +
-  scale_x_discrete(labels = treatment_labels) +
+  scale_x_discrete(
+    labels = treatment_labels
+  ) +
   expand_limits(y = 0) +
   labs(
-    x = "Cover crop mowing regime",
+    x = "Mowing times relative to transplanting",
     y = "Harvested fresh weight (kg / middle row)",
     shape = "Block",
-    caption = paste(
-      "Small points = plots; diamonds = adjusted means;",
-      "bars = 95% CI."
+    caption = paste0(
+      "Negative weeks: before transplanting; positive weeks: after transplanting.\n",
+      "Small points = plots; diamonds = adjusted means; bars = 95% CI."
     )
   ) +
   theme_classic(base_size = 11) +
@@ -311,34 +379,52 @@ shapiro.test(residuals(fit))
 ```{r save-results, include=FALSE}
 write.csv(
   plot_data,
-  file.path(output_dir, "Plot_yield.csv"),
+  file.path(
+    output_dir,
+    "Plot_yield.csv"
+  ),
   row.names = FALSE
 )
 
 write.csv(
   anova_result,
-  file.path(output_dir, "ANOVA.csv")
+  file.path(
+    output_dir,
+    "ANOVA.csv"
+  )
 )
 
 write.csv(
   emm_table,
-  file.path(output_dir, "Adjusted_means.csv"),
+  file.path(
+    output_dir,
+    "Adjusted_means.csv"
+  ),
   row.names = FALSE
 )
 
 write.csv(
   tukey_table,
-  file.path(output_dir, "Tukey_comparisons.csv"),
+  file.path(
+    output_dir,
+    "Tukey_comparisons.csv"
+  ),
   row.names = FALSE
 )
 
 saveRDS(
   fit,
-  file.path(output_dir, "Yield_model.rds")
+  file.path(
+    output_dir,
+    "Yield_model.rds"
+  )
 )
 
 ggsave(
-  file.path(output_dir, "Yield_ANOVA.png"),
+  file.path(
+    output_dir,
+    "Yield_ANOVA.png"
+  ),
   plot = p,
   width = 7,
   height = 4.5,
@@ -347,7 +433,10 @@ ggsave(
 )
 
 ggsave(
-  file.path(output_dir, "Yield_ANOVA.pdf"),
+  file.path(
+    output_dir,
+    "Yield_ANOVA.pdf"
+  ),
   plot = p,
   width = 7,
   height = 4.5,
@@ -356,6 +445,9 @@ ggsave(
 
 capture.output(
   sessionInfo(),
-  file = file.path(output_dir, "Session_info.txt")
+  file = file.path(
+    output_dir,
+    "Session_info.txt"
+  )
 )
 ```
