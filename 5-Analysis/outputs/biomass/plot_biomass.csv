@@ -1,0 +1,25 @@
+"block","treatment","location","n_quadrats","biomass_g_m2"
+"B1","T2","Broccoli",2,42.0178571428571
+"B1","T2","Cover crop",2,213.1875
+"B1","T3","Broccoli",2,21
+"B1","T3","Cover crop",2,192.6875
+"B1","T4","Broccoli",2,225.339285714286
+"B1","T4","Cover crop",2,365.59375
+"B2","T2","Broccoli",2,161.821428571429
+"B2","T2","Cover crop",2,114.28125
+"B2","T3","Broccoli",2,53.8392857142857
+"B2","T3","Cover crop",2,326.46875
+"B2","T4","Broccoli",2,140.696428571429
+"B2","T4","Cover crop",2,376.3125
+"B3","T2","Broccoli",2,60
+"B3","T2","Cover crop",2,203.03125
+"B3","T3","Broccoli",2,32.6607142857143
+"B3","T3","Cover crop",2,212.03125
+"B3","T4","Broccoli",2,165.607142857143
+"B3","T4","Cover crop",2,269.71875
+"B4","T2","Broccoli",2,67.3928571428571
+"B4","T2","Cover crop",2,601.21875
+"B4","T3","Broccoli",2,62.6785714285714
+"B4","T3","Cover crop",2,316.21875
+"B4","T4","Broccoli",2,224.303571428571
+"B4","T4","Cover crop",2,362.21875

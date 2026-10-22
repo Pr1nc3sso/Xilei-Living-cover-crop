@@ -266,6 +266,8 @@ Treatment and block are fitted as fixed factors. The design is balanced,
 with treatment, block and residual degrees of freedom of 2, 3 and 6.
 
 ```{r anova}
+#### In the publications you've read, how many digits are used to present the means, SEs, vs. p-values?
+
 knitr::kable(
   anova_result,
   digits = 5
@@ -292,6 +294,8 @@ pairs. Use these comparisons to assess treatment differences rather than
 judging overlap between the confidence intervals of individual means.
 
 ```{r tukey}
+#### note why Tukey
+
 knitr::kable(
   tukey_table,
   digits = 4,
@@ -305,6 +309,10 @@ Negative weeks on the horizontal axis indicate mowing before transplanting.
 Positive weeks indicate mowing after transplanting.
 
 ```{r yield-figure}
+#### instead of kg / middle row, use the plot size to calculate. The effective surface area for a row = 1/3 the surface area of the experimental unit.
+
+#### show the marginal means and SEs for each treatment.
+
 p <- ggplot(
   plot_data,
   aes(
@@ -377,6 +385,7 @@ shapiro.test(residuals(fit))
 ```
 
 ```{r save-results, include=FALSE}
+#### Find a way to save your final graphs (intended for publications, not all graphs), to folder 7.
 write.csv(
   plot_data,
   file.path(

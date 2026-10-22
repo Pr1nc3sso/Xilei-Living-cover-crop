@@ -735,12 +735,18 @@ report_location <- function(result) {
 ## Broccoli sampling location
 
 ```{r broccoli-results, results='asis'}
-report_location(results[["Broccoli"]])
+#### T1 need to be here, with a note that there is no broccoli
+#### show the marginal means and SEs for each treatment.
+#### partition weeds vs. CC biomass and rename plot title and axes accordingly.
+report_location(results[["Broccoli"]]) 
 ```
 
 ## Cover-crop sampling location
 
 ```{r cover-crop-results, results='asis'}
+#### T1 need to be here, with a note that there is no CC
+#### show the marginal means and SEs for each treatment.
+#### partition weeds vs. CC biomass and rename plot title and axes accordingly.
 report_location(results[["Cover crop"]])
 ```
 

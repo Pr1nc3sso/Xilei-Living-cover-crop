@@ -1,0 +1,7 @@
+Source: https://raw.githubusercontent.com/Pr1nc3sso/Xilei-Living-cover-crop/master/2-Data/Raw/Vegetation%20survey%20-%20broccoli%20harvest.xlsx
+Downloaded at UTC: 2026-10-22 16:35:39
+File MD5: 333dd6bccea6e16b4e74edb5a95f3da0
+All T2-T4 treatments: mown 1 week before transplanting.
+T2: additional mowing at 3 and 6 weeks after transplanting.
+T3: additional mowing at 6 weeks after transplanting.
+T4: no additional mowing after transplanting.
