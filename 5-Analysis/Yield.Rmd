@@ -1,10 +1,4 @@
 ---
-title: "Yield"
-output: html_document
-date: "2026-10-08"
----
-
----
 title: "Broccoli Yield: Randomized Complete Block Analysis"
 output:
   bookdown::pdf_document2:
@@ -162,8 +156,18 @@ if (any(table(dat$block, dat$treatment) == 0L)) {
   stop("A plot has no harvest records; do not assume zero yield.")
 }
 
-# Each plot, not each individual head, is a replicate.
-# Pool all harvest dates within each plot.
+# Enter the TOTAL area of one experimental plot, in square metres.
+# This single value assumes all 12 experimental plots have equal areas.
+# Do not use the biomass quadrat area.
+plot_area_m2 <- 4 * 6.46
+
+if (!is.finite(plot_area_m2) || plot_area_m2 <= 0) {
+  stop(
+    "Enter the confirmed total experimental plot area in plot_area_m2."
+  )
+}
+
+# Pool all harvest dates within each experimental plot.
 plot_data <- dat %>%
   group_by(block, treatment) %>%
   summarise(
@@ -171,14 +175,17 @@ plot_data <- dat %>%
     heads = n(),
     mean_head_g = mean(fresh_weight_g),
     .groups = "drop"
+  ) %>%
+  mutate(
+    harvest_area_m2 = plot_area_m2 / 3,
+    yield_t_ha = yield_kg / harvest_area_m2 * 10
   )
 
 stopifnot(nrow(plot_data) == 12L)
 
-# Randomized complete block model.
-# Treatment remains a categorical factor.
+# Fit the model using yield per unit area.
 fit <- lm(
-  yield_kg ~ treatment + block,
+  yield_t_ha ~ treatment + block,
   data = plot_data
 )
 
@@ -237,12 +244,16 @@ as continuous predictors.
 
 ## Response and experimental unit
 
-The response is total harvested fresh weight in kilograms per middle row,
-pooled over all recorded harvest dates. All weighed heads are included.
-This is not marketable yield.
+The response is total harvested fresh yield in tonnes per hectare,
+pooled over all recorded harvest dates. All weighed heads are included;
+this is not marketable yield.
 
-Equal middle-row harvest areas are assumed. Their exact sizes are unknown,
-so yield is not expressed per square metre.
+Each experimental plot has an area of `r plot_area_m2` square metres.
+The effective harvested middle-row area is one-third of this area,
+or `r plot_area_m2 / 3` square metres.
+
+Yield in t/ha is calculated as harvested fresh weight in kg divided
+by the effective harvested area in square metres, multiplied by 10.
 
 The analysis includes three mowing treatments and four blocks.
 Each block-by-treatment plot is one replicate. Outer rows and the separate
@@ -253,9 +264,22 @@ estimated separately from residual error. The model assumes additive
 treatment and block effects.
 
 ```{r plot-data}
+plot_display <- data.frame(
+  Block = plot_data$block,
+  Treatment = plot_data$treatment,
+  Heads = plot_data$heads,
+  Harvest_area_m2 = sprintf(
+    "%.2f",
+    plot_data$harvest_area_m2
+  ),
+  Yield_t_ha = sprintf(
+    "%.2f",
+    plot_data$yield_t_ha
+  )
+)
+
 knitr::kable(
-  plot_data,
-  digits = 3,
+  plot_display,
   row.names = FALSE
 )
 ```
@@ -266,40 +290,90 @@ Treatment and block are fitted as fixed factors. The design is balanced,
 with treatment, block and residual degrees of freedom of 2, 3 and 6.
 
 ```{r anova}
-#### In the publications you've read, how many digits are used to present the means, SEs, vs. p-values?
+# Format display tables without rounding the analysis objects.
+format_p <- function(x) {
+  ifelse(
+    is.na(x),
+    "",
+    ifelse(
+      x < 0.001,
+      "<0.001",
+      sprintf("%.3f", x)
+    )
+  )
+}
+
+a <- as.data.frame(anova_result)
+
+anova_display <- data.frame(
+  Source = rownames(a),
+  df = as.integer(a$Df),
+  SS = sprintf("%.2f", a[["Sum Sq"]]),
+  MS = sprintf("%.2f", a[["Mean Sq"]]),
+  F = ifelse(
+    is.na(a[["F value"]]),
+    "",
+    sprintf("%.2f", a[["F value"]])
+  ),
+  p = format_p(a[["Pr(>F)"]])
+)
 
 knitr::kable(
-  anova_result,
-  digits = 5
+  anova_display,
+  row.names = FALSE,
+  caption = "ANOVA of harvested fresh yield (t/ha)"
 )
 ```
 
 ## Adjusted treatment means
 
-Means are adjusted for block.
-The intervals below are individual 95% confidence intervals.
+Means are adjusted for block and expressed in t/ha.
+The table reports each estimated marginal mean, its model-based SE,
+and its individual 95% confidence interval.
+The figure shows means with error bars of one SE.
 
 ```{r adjusted-means}
+emm_display <- data.frame(
+  Treatment = emm_table$treatment,
+  Mean = sprintf("%.2f", emm_table$emmean),
+  SE = sprintf("%.2f", emm_table$SE),
+  df = as.integer(emm_table$df),
+  Lower = sprintf("%.2f", emm_table$lower.CL),
+  Upper = sprintf("%.2f", emm_table$upper.CL)
+)
+
 knitr::kable(
-  emm_table,
-  digits = 3,
-  row.names = FALSE
+  emm_display,
+  row.names = FALSE,
+  caption = "Adjusted yield means, SEs and 95% CIs (t/ha)"
 )
 ```
 
 ## Tukey pairwise comparisons
 
-P values and confidence intervals are adjusted across the three treatment
-pairs. Use these comparisons to assess treatment differences rather than
-judging overlap between the confidence intervals of individual means.
+All three pairwise treatment comparisons are of interest.
+Tukey adjustment was therefore used to control the family-wise
+Type I error rate across these comparisons. Comparisons are based
+on estimated marginal means adjusted for block.
+
+Differences, SEs and confidence limits are expressed in t/ha.
+The confidence intervals and p-values below are Tukey-adjusted.
 
 ```{r tukey}
-#### note why Tukey
+tukey_display <- data.frame(
+  Contrast = tukey_table$contrast,
+  Difference = sprintf("%.2f", tukey_table$estimate),
+  SE = sprintf("%.2f", tukey_table$SE),
+  df = as.integer(tukey_table$df),
+  Lower = sprintf("%.2f", tukey_table$lower.CL),
+  Upper = sprintf("%.2f", tukey_table$upper.CL),
+  p = format_p(tukey_table$p.value)
+)
 
 knitr::kable(
-  tukey_table,
-  digits = 4,
-  row.names = FALSE
+  tukey_display,
+  row.names = FALSE,
+  caption = "Pairwise yield differences with Tukey-adjusted 95% CIs"
 )
 ```
 
@@ -309,15 +383,12 @@ Negative weeks on the horizontal axis indicate mowing before transplanting.
 Positive weeks indicate mowing after transplanting.
 
 ```{r yield-figure}
-#### instead of kg / middle row, use the plot size to calculate. The effective surface area for a row = 1/3 the surface area of the experimental unit.
-
-#### show the marginal means and SEs for each treatment.
-
+# Show plot yields and adjusted treatment means +/- 1 SE.
 p <- ggplot(
   plot_data,
   aes(
     x = treatment,
-    y = yield_kg
+    y = yield_t_ha
   )
 ) +
   geom_point(
@@ -330,8 +401,8 @@ p <- ggplot(
     inherit.aes = FALSE,
     aes(
       x = treatment,
-      ymin = lower.CL,
-      ymax = upper.CL
+      ymin = emmean - SE,
+      ymax = emmean + SE
     ),
     width = 0.12,
     linewidth = 0.7
@@ -352,11 +423,11 @@ p <- ggplot(
   expand_limits(y = 0) +
   labs(
     x = "Mowing times relative to transplanting",
-    y = "Harvested fresh weight (kg / middle row)",
+    y = "Harvested fresh yield (t/ha)",
     shape = "Block",
     caption = paste0(
       "Negative weeks: before transplanting; positive weeks: after transplanting.\n",
-      "Small points = plots; diamonds = adjusted means; bars = 95% CI."
+      "Small points = plots; diamonds = adjusted means; bars = +/- 1 model-based SE."
     )
   ) +
   theme_classic(base_size = 11) +
@@ -385,7 +456,41 @@ shapiro.test(residuals(fit))
 ```
 
 ```{r save-results, include=FALSE}
-#### Find a way to save your final graphs (intended for publications, not all graphs), to folder 7.
+# Locate the local project root.
+project_root <- normalizePath(
+  getwd(),
+  winslash = "/",
+  mustWork = TRUE
+)
+
+repeat {
+  required_folders <- file.path(
+    project_root,
+    c("2-Data", "5-Analysis")
+  )
+
+  if (all(dir.exists(required_folders))) break
+
+  parent_dir <- dirname(project_root)
+
+  if (identical(parent_dir, project_root)) {
+    stop(
+      "Run this Rmd inside the local Xilei-Living-cover-crop project."
+    )
+  }
+
+  project_root <- parent_dir
+}
+
+# Export only the final yield figure to folder 7.
+figure_dir <- file.path(project_root, "7-Extra")
+
+dir.create(
+  figure_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
 write.csv(
   plot_data,
   file.path(
@@ -430,22 +535,16 @@ saveRDS(
 )
 
 ggsave(
-  file.path(
-    output_dir,
-    "Yield_ANOVA.png"
-  ),
+  file.path(figure_dir, "Yield_ANOVA.png"),
   plot = p,
   width = 7,
   height = 4.5,
-  dpi = 300,
+  dpi = 600,
   bg = "white"
 )
 
 ggsave(
-  file.path(
-    output_dir,
-    "Yield_ANOVA.pdf"
-  ),
+  file.path(figure_dir, "Yield_ANOVA.pdf"),
   plot = p,
   width = 7,
   height = 4.5,
