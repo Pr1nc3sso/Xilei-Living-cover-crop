@@ -31,8 +31,8 @@ library(tidyr)
 library(ggplot2)
 library(emmeans)
 
-# Output folder.
-output_dir <- file.path("outputs", "biomass")
+# Save results in the Weed Biomass folder.
+output_dir <- file.path(getwd(), "Weed Biomass")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Confirmed mowing schedule relative to broccoli transplanting:
@@ -144,30 +144,49 @@ comparisons within each sampling location.
 ## Import and prepare the data
 
 ```{r import-and-clean, include=FALSE}
-# GitHub source: 2-Data/Raw/
+# Output folder.
+output_dir <- file.path(getwd(), "Weed Biomass")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Treatment order, labels and colours.
+treatment_levels <- c("T1", "T4", "T3", "T2")
+
+treatment_labels <- c(
+  T1 = "T1\nWeedy control",
+  T4 = "T4\n-1 week",
+  T3 = "T3\n-1 and +6 weeks",
+  T2 = "T2\n-1, +3 and +6 weeks"
+)
+
+treatment_colours <- c(
+  T1 = "#777777",
+  T4 = "#A56A46",
+  T3 = "#4B8395",
+  T2 = "#4A8862"
+)
+
+locations <- c("Broccoli", "Cover crop")
+
+# Download the workbook from GitHub: 2-Data/Raw/.
 github_url <- paste0(
-  "https://raw.githubusercontent.com/",
-  "Pr1nc3sso/Xilei-Living-cover-crop/",
-  "master/2-Data/Raw/",
+  "https://raw.githubusercontent.com/Pr1nc3sso/",
+  "Xilei-Living-cover-crop/master/2-Data/Raw/",
   "Vegetation%20survey%20-%20broccoli%20harvest.xlsx"
 )
 
-options(timeout = max(120, getOption("timeout")))
-
+options(timeout = max(120, getOption("timeout", 60)))
 excel_file <- tempfile(fileext = ".xlsx")
 
 download.file(
-  url = github_url,
-  destfile = excel_file,
+  github_url,
+  excel_file,
   mode = "wb",
   method = "libcurl",
   quiet = TRUE
 )
 
-# Read all populated rows in columns A:J.
-# Do not restrict the import to a fixed final row.
 raw <- read_excel(
-  path = excel_file,
+  excel_file,
   sheet = "2026",
   range = cell_cols("A:J"),
   col_types = "text",
@@ -188,24 +207,22 @@ expected_headers <- c(
 )
 
 if (!identical(names(raw), expected_headers)) {
-  stop("Excel headers have changed. Check the column mapping.")
+  stop("Excel headers changed. Check the column mapping.")
 }
 
-# Preserve Excel row numbers before removing empty rows.
+# Preserve source row numbers.
 raw$excel_row <- seq_len(nrow(raw)) + 1L
 raw <- raw[rowSums(!is.na(raw[1:10])) > 0, ]
 
-# Compare only the ten original columns for exact duplicates.
-# Records are not removed merely because their species labels match.
+# Remove only exact duplicates across the original ten columns.
 duplicate_flag <- duplicated(as.data.frame(raw[1:10]))
 
-removed_duplicates <- raw[duplicate_flag, ]
-clean <- raw[!duplicate_flag, ]
-
 save_csv(
-  removed_duplicates,
+  raw[duplicate_flag, ],
   "removed_exact_duplicates.csv"
 )
+
+clean <- raw[!duplicate_flag, ]
 
 names(clean)[1:10] <- c(
   "collection_date",
@@ -226,114 +243,167 @@ clean <- clean %>%
       c(block, treatment, quadrat, weight_g, source_area_m2),
       as.numeric
     ),
+    source_location = location,
+    source_species = species,
     location = trimws(gsub("[[:space:]]+", " ", location)),
-    species = toupper(trimws(species))
+    species = toupper(trimws(gsub("[[:space:]]+", " ", species))),
+    species = recode(
+      species,
+      "UNKNOWNN MONOCOTS" = "UNKNOWN MONOCOTS",
+      "UNKNOWNN DICOTS" = "UNKNOWN DICOTS"
+    ),
+    # All T1 quadrats follow the cover-crop-area sampling protocol.
+    location = if_else(treatment == 1, "Cover crop", location)
   )
 
-# Validate identifiers and biomass weights.
+# Validate identifiers and weights.
 numeric_fields <- c(
-  "block",
-  "treatment",
-  "quadrat",
-  "weight_g"
+  "block", "treatment", "quadrat", "weight_g"
 )
 
 if (any(!is.finite(as.matrix(clean[numeric_fields])))) {
-  stop("Missing or invalid identifiers or biomass weights.")
+  stop("Missing or invalid identifiers or weights.")
 }
 
 if (any(clean$weight_g < 0)) {
-  stop("Negative biomass weights were found.")
+  stop("Negative biomass weights.")
 }
 
 if (
   any(!clean$block %in% 1:4) ||
   any(!clean$treatment %in% 1:4) ||
-  any(!clean$quadrat %in% 1:4)
+  any(!clean$quadrat %in% 1:4) ||
+  any(!clean$location %in% locations)
 ) {
-  stop("Unexpected block, treatment, or quadrat identifiers.")
+  stop("Unexpected block, treatment, quadrat or location.")
 }
 
 if (any(is.na(clean$species) | clean$species == "")) {
-  stop("Some records have no species label.")
+  stop("Missing species labels.")
 }
 
-# Keep the three mowing treatments.
+# Explicit classification of the currently recorded weed codes.
+weed_species <- c(
+  "AMARE", "ARTVU", "CAPBP", "CHEAL", "DIGIS", "DIGSA",
+  "ECHCG", "GASCI", "LACSE", "MALNE", "MEDLU", "OXASD",
+  "OXAST", "PLANA", "POLLA", "POLPE", "POROL", "SETSP",
+  "SETPU", "SETVI", "TRFRE", "UNKNOWN MONOCOTS"
+)
+
 analysis_records <- clean %>%
-  filter(treatment %in% 2:4)
-
-if (any(!analysis_records$location %in% locations)) {
-  stop("Unexpected or missing sampling-location labels.")
-}
-
-# Apply the confirmed areas while retaining the source values.
-analysis_records <- analysis_records %>%
   mutate(
-    area_m2 = if_else(
-      location == "Broccoli",
-      0.28,
-      0.16
+    # T1 has already been assigned to the Cover crop protocol.
+    area_m2 = if_else(location == "Broccoli", 0.28, 0.16),
+    component = case_when(
+      species == "TRFAL" ~ "Sown cover crop",
+      species == "CLOVER" ~ "Legacy clover",
+      species %in% c("UNKNOWN BRASSICA", "UNKNOWN DICOTS") ~
+        "Unclassified",
+      species %in% weed_species ~ "Weeds",
+      TRUE ~ "Unmapped"
     )
   )
 
-area_corrections <- analysis_records %>%
-  filter(
-    is.na(source_area_m2) |
-      abs(source_area_m2 - area_m2) > 1e-10
-  )
-
 save_csv(
-  area_corrections,
-  "area_corrections.csv"
+  analysis_records %>%
+    distinct(source_species, species, component),
+  "species_classification.csv"
 )
+
+# New codes must be checked rather than automatically called weeds.
+if (any(analysis_records$component == "Unmapped")) {
+  save_csv(
+    filter(analysis_records, component == "Unmapped"),
+    "unmapped_species.csv"
+  )
+  stop("New species codes found. Check unmapped_species.csv.")
+}
 
 save_csv(
   analysis_records,
-  "clean_T2_T4_records.csv"
+  "clean_T1_T4_records.csv"
+)
+
+save_csv(
+  analysis_records %>%
+    filter(
+      is.na(source_area_m2) |
+        abs(source_area_m2 - area_m2) > 1e-10 |
+        is.na(source_location) |
+        source_location != location
+    ),
+  "sampling_corrections.csv"
+)
+
+save_csv(
+  filter(analysis_records, component == "Unclassified"),
+  "unclassified_records.csv"
 )
 
 # Avoid combining different collection dates within a quadrat.
 date_check <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
-    n_dates = n_distinct(
-      collection_date,
-      na.rm = TRUE
-    ),
+    n_dates = n_distinct(collection_date, na.rm = TRUE),
     .groups = "drop"
   )
 
-if (any(date_check$n_dates != 1)) {
-  stop("Check missing or multiple collection dates within quadrats.")
+if (any(date_check$n_dates != 1L)) {
+  stop("Missing or multiple collection dates within quadrats.")
 }
 
-# Sum all species and retained records within each quadrat.
+# Aggregate all observed quadrats before selecting biomass components.
 quadrat_data <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
-    total_weight_g = sum(weight_g),
     area_m2 = first(area_m2),
+    confirmed_weed_g = sum(weight_g[component == "Weeds"]),
+    legacy_g = sum(weight_g[component == "Legacy clover"]),
+    unclassified_g = sum(weight_g[component == "Unclassified"]),
+    n_berseem_records = sum(component == "Sown cover crop"),
+    berseem_g = if (any(component == "Sown cover crop")) {
+      sum(weight_g[component == "Sown cover crop"])
+    } else {
+      NA_real_
+    },
+    recorded_total_g = sum(weight_g),
     .groups = "drop"
   ) %>%
   mutate(
-    biomass_g_m2 = total_weight_g / area_m2
+    confirmed_weed_g_m2 = confirmed_weed_g / area_m2,
+    legacy_g_m2 = legacy_g / area_m2,
+    unclassified_g_m2 = unclassified_g / area_m2,
+
+    # Primary response includes legacy clover.
+    weed_g_m2 = (confirmed_weed_g + legacy_g) / area_m2,
+
+    # Classification sensitivity includes unclassified vegetation.
+    inclusive_g_m2 = weed_g_m2 + unclassified_g_m2,
+
+    # Missing cover-crop records remain NA.
+    recorded_berseem_g_m2 = berseem_g / area_m2,
+    recorded_total_g_m2 = recorded_total_g / area_m2
   )
 
 # Expected layout:
-# 4 blocks x 3 treatments x 2 locations x 2 quadrats = 48 quadrats.
-expected_quadrats <- expand_grid(
-  block = 1:4,
-  treatment = 2:4,
-  location = locations,
-  quadrat = 1:2
+# T1: 4 blocks x 4 quadrats = 16.
+# T2-T4: 4 blocks x 3 treatments x 2 locations x 2 quadrats = 48.
+expected_quadrats <- bind_rows(
+  expand_grid(
+    block = 1:4,
+    treatment = 1,
+    location = "Cover crop",
+    quadrat = 1:4
+  ),
+  expand_grid(
+    block = 1:4,
+    treatment = 2:4,
+    location = locations,
+    quadrat = 1:2
+  )
 )
 
-keys <- c(
-  "block",
-  "treatment",
-  "location",
-  "quadrat"
-)
+keys <- c("block", "treatment", "location", "quadrat")
 
 missing_quadrats <- anti_join(
   expected_quadrats,
@@ -347,33 +417,35 @@ unexpected_quadrats <- anti_join(
   by = keys
 )
 
-save_csv(
-  missing_quadrats,
-  "missing_quadrats.csv"
-)
-
-save_csv(
-  unexpected_quadrats,
-  "unexpected_quadrats.csv"
-)
+save_csv(missing_quadrats, "missing_quadrats.csv")
+save_csv(unexpected_quadrats, "unexpected_quadrats.csv")
 
 if (
   nrow(missing_quadrats) > 0 ||
   nrow(unexpected_quadrats) > 0
 ) {
   stop(
-    "The quadrat layout differs from the complete design. ",
-    "Check the exported missing/unexpected quadrat files. ",
-    "Missing observations must not be replaced with zero."
+    "Check the quadrat audit files. ",
+    "Do not replace missing quadrats with zero."
   )
 }
 
-# Average the two quadrat densities within each plot and location.
+# One mean per experimental plot and sampling location.
 plot_data <- quadrat_data %>%
   group_by(block, treatment, location) %>%
   summarise(
     n_quadrats = n(),
-    biomass_g_m2 = mean(biomass_g_m2),
+    across(
+      c(
+        confirmed_weed_g_m2,
+        legacy_g_m2,
+        unclassified_g_m2,
+        weed_g_m2,
+        inclusive_g_m2,
+        recorded_total_g_m2
+      ),
+      mean
+    ),
     .groups = "drop"
   ) %>%
   mutate(
@@ -387,21 +459,25 @@ plot_data <- quadrat_data %>%
     )
   )
 
-if (any(plot_data$n_quadrats != 2)) {
-  stop("Each plot and sampling location must contain two quadrats.")
+if (
+  any(
+    plot_data$n_quadrats !=
+      ifelse(plot_data$treatment == "T1", 4L, 2L)
+  )
+) {
+  stop("Expected four quadrats for T1 and two per location for T2-T4.")
 }
 
 save_csv(
   quadrat_data,
-  "quadrat_biomass.csv"
+  "quadrat_biomass_components.csv"
 )
 
 save_csv(
   plot_data,
-  "plot_biomass.csv"
+  "plot_biomass_components.csv"
 )
 
-# Save source information and the confirmed treatment descriptions.
 writeLines(
   c(
     paste("Source:", github_url),
@@ -410,111 +486,134 @@ writeLines(
       format(Sys.time(), tz = "UTC")
     ),
     paste(
-      "File MD5:",
+      "Workbook MD5:",
       unname(tools::md5sum(excel_file))
     ),
-    "All T2-T4 treatments: mown 1 week before transplanting.",
-    "T2: additional mowing at 3 and 6 weeks after transplanting.",
-    "T3: additional mowing at 6 weeks after transplanting.",
-    "T4: no additional mowing after transplanting."
+    "T1: no broccoli or cover crop planted; four 0.16 m2 quadrats per block; cut at 8 cm.",
+    "T2: mowing at -1, +3 and +6 weeks relative to transplanting.",
+    "T3: mowing at -1 and +6 weeks. T4: mowing at -1 week.",
+    "Primary weeds include legacy CLOVER; unclassified vegetation is excluded.",
+    "Classification sensitivity includes unclassified vegetation.",
+    "Rye biomass was not recorded. Missing cover-crop records are not zeros."
   ),
   file.path(output_dir, "data_source.txt")
 )
 ```
 
-```{r data-checks}
-data_check <- data.frame(
-  Item = c(
-    "Original records",
-    "Exact duplicates removed",
-    "Records retained across all treatments",
-    "Records included for T2-T4",
-    "Area records corrected for T2-T4",
-    "Quadrats included for T2-T4",
-    "Plot means per sampling location",
-    "Quadrats per plot and location"
-  ),
-  Count = c(
-    nrow(raw),
-    nrow(removed_duplicates),
-    nrow(clean),
-    nrow(analysis_records),
-    nrow(area_corrections),
-    nrow(quadrat_data),
-    nrow(plot_data) / length(locations),
-    2
+## Sampling checks
+
+T1 has four quadrats per block, sampled at 8 cm above ground.
+T2-T4 have two quadrats per plot and sampling location.
+Each plot contributes one mean to its location-specific analysis.
+
+```{r sampling-checks}
+sampling_check <- plot_data %>%
+  group_by(location, treatment) %>%
+  summarise(
+    Plots = n(),
+    Quadrats = sum(n_quadrats),
+    .groups = "drop"
   )
-)
 
 knitr::kable(
-  data_check,
-  caption = "Data preparation and completeness checks"
+  sampling_check,
+  row.names = FALSE
 )
 ```
 
-The confirmed sampling areas are used for conversion to biomass
-per unit area. Any differences from the recorded Excel areas
-are documented in the exported area-correction table.
-
-## Fit the models and prepare figures
+## Fit the weed models and prepare figures
 
 ```{r models-and-figures, include=FALSE}
-analyse_location <- function(location_name) {
-
-  d <- plot_data %>%
-    filter(location == location_name)
-
-  # Verify one plot mean per block-treatment combination.
-  if (
-    nrow(d) != 12 ||
-    !all(table(d$block, d$treatment) == 1)
-  ) {
-    stop("Expected one plot mean for each block-treatment combination.")
-  }
-
-  # Primary model: treatment and block as categorical effects.
+fit_tables <- function(d, response) {
   fit <- lm(
-    biomass_g_m2 ~ treatment + block,
+    reformulate(
+      c("treatment", "block"),
+      response = response
+    ),
     data = d,
     na.action = na.fail
   )
 
-  # Treatment and block are orthogonal in this balanced design.
-  a <- anova(fit)
-  anova_results <- make_anova_table(fit)
-
-  # Calculate marginal means while the model data are available.
-  emm <- emmeans::emmeans(
+  emm <- emmeans(
     fit,
     ~ treatment,
     weights = "equal"
   )
 
-  # Individual 95% confidence intervals for adjusted means.
-  mean_results <- as.data.frame(
-    confint(
-      emm,
-      level = 0.95,
-      adjust = "none"
+  list(
+    fit = fit,
+    anova = make_anova_table(fit),
+    means = as.data.frame(
+      confint(emm, level = 0.95)
+    ),
+    tukey = as.data.frame(
+      summary(
+        pairs(emm, adjust = "tukey"),
+        infer = c(TRUE, TRUE),
+        level = 0.95
+      )
     )
   )
+}
 
-  # Tukey-adjusted comparisons within this sampling location.
-  tukey_results <- as.data.frame(
-    summary(
-      pairs(emm, adjust = "tukey"),
-      infer = c(TRUE, TRUE),
-      level = 0.95
-    )
+analyse_location <- function(location_name) {
+  d <- droplevels(
+    filter(plot_data, location == location_name)
   )
 
-  # Observed plot means and model-adjusted treatment means.
-  figure <- ggplot() +
+  expected_n <- if (location_name == "Broccoli") {
+    12L
+  } else {
+    16L
+  }
+
+  if (
+    nrow(d) != expected_n ||
+    !all(table(d$block, d$treatment) == 1L)
+  ) {
+    stop("Expected one plot mean per block-treatment combination.")
+  }
+
+  primary <- fit_tables(d, "weed_g_m2")
+  classification <- fit_tables(d, "inclusive_g_m2")
+
+  log_result <- if (all(d$weed_g_m2 > 0)) {
+    fit_tables(
+      mutate(d, log_weed = log(weed_g_m2)),
+      "log_weed"
+    )
+  } else {
+    NULL
+  }
+
+  a <- anova(primary$fit)
+  pval <- a["treatment", "Pr(>F)"]
+
+  ptext <- if (pval < 0.001) {
+    "<0.001"
+  } else {
+    paste("=", sprintf("%.3f", pval))
+  }
+
+  caption_text <- if (location_name == "Broccoli") {
+    paste(
+      "T2-T4: cut at ground level; two quadrats per plot.",
+      "T1 is reported separately."
+    )
+  } else {
+    paste0(
+      "All samples cut at 8 cm. T1: no broccoli or cover crop planted;",
+      " four quadrats per plot.\n",
+      "T2-T4: two quadrats per plot."
+    )
+  }
+
+  figure <- ggplot(
+    d,
+    aes(treatment, weed_g_m2)
+  ) +
     geom_point(
-      data = d,
       aes(
-        x = treatment,
-        y = biomass_g_m2,
         colour = treatment,
         shape = block
       ),
@@ -523,29 +622,28 @@ analyse_location <- function(location_name) {
         height = 0,
         seed = 42
       ),
-      size = 2.8,
-      alpha = 0.85
+      size = 2.7
     ) +
     geom_errorbar(
-      data = mean_results,
+      data = primary$means,
+      inherit.aes = FALSE,
       aes(
         x = treatment,
-        ymin = lower.CL,
-        ymax = upper.CL
+        ymin = emmean - SE,
+        ymax = emmean + SE
       ),
       width = 0.12,
-      linewidth = 0.7,
-      colour = "black"
+      linewidth = 0.7
     ) +
     geom_point(
-      data = mean_results,
+      data = primary$means,
+      inherit.aes = FALSE,
       aes(
         x = treatment,
         y = emmean
       ),
       shape = 18,
-      size = 3.8,
-      colour = "black"
+      size = 4
     ) +
     scale_x_discrete(
       labels = treatment_labels
@@ -559,125 +657,95 @@ analyse_location <- function(location_name) {
     expand_limits(y = 0) +
     labs(
       title = paste(
-        "Total vegetation biomass:",
-        location_name
+        "Weed biomass:",
+        location_name,
+        "sampling area"
       ),
       subtitle = sprintf(
-        "Treatment ANOVA: F(2, %d) = %.3f, p = %.4f",
-        df.residual(fit),
+        "Treatment ANOVA: F(%d, %d) = %.2f; p %s",
+        a["treatment", "Df"],
+        df.residual(primary$fit),
         a["treatment", "F value"],
-        a["treatment", "Pr(>F)"]
+        ptext
       ),
-      x = "Mowing times relative to transplanting",
+      x = "Treatment and mowing weeks relative to transplanting",
       y = expression(
-        "Vegetation biomass (g " * m^{-2} * ")"
+        "Weed biomass (g " * m^{-2} * ")"
       ),
       shape = "Block",
       caption = paste0(
-        "Negative weeks: before transplanting; positive weeks: after transplanting.\n",
-        "Coloured points: plot means of two quadrats.\n",
-        "Black diamonds: adjusted means; bars: 95% confidence intervals."
+        caption_text,
+        "\nPoints: plots; diamonds: adjusted means;",
+        " bars: +/- 1 model-based SE.",
+        "\nWeeds include legacy clover;",
+        " unclassified vegetation is excluded."
       )
     ) +
-    guides(
-      colour = "none"
-    ) +
-    theme_bw(base_size = 11) +
+    guides(colour = "none") +
+    theme_bw(base_size = 10) +
     theme(
       legend.position = "bottom",
       panel.grid.minor = element_blank(),
-      plot.caption = element_text(hjust = 0)
+      plot.caption = element_text(
+        hjust = 0,
+        size = 8
+      )
     )
 
   prefix <- tolower(
     gsub(" ", "_", location_name)
   )
 
-  save_csv(
-    anova_results,
-    paste0(prefix, "_anova.csv")
+  analyses <- list(
+    primary = primary,
+    classification = classification,
+    log = log_result
   )
 
-  save_csv(
-    mean_results,
-    paste0(prefix, "_adjusted_means.csv")
-  )
+  for (nm in names(analyses)) {
+    z <- analyses[[nm]]
 
-  save_csv(
-    tukey_results,
-    paste0(prefix, "_tukey.csv")
-  )
+    if (is.null(z)) next
 
-  ggsave(
-    filename = file.path(
-      output_dir,
-      paste0(prefix, "_biomass.png")
-    ),
-    plot = figure,
-    width = 7,
-    height = 4.8,
-    dpi = 300
-  )
-
-  ggsave(
-    filename = file.path(
-      output_dir,
-      paste0(prefix, "_biomass.pdf")
-    ),
-    plot = figure,
-    width = 7,
-    height = 4.8
-  )
-
-  # Separate log-scale sensitivity analysis.
-  # No constant is added to zero observations.
-  log_anova <- NULL
-  log_tukey <- NULL
-
-  if (all(d$biomass_g_m2 > 0)) {
-
-    log_fit <- lm(
-      log(biomass_g_m2) ~ treatment + block,
-      data = d,
-      na.action = na.fail
-    )
-
-    log_anova <- make_anova_table(log_fit)
-
-    log_emm <- emmeans::emmeans(
-      log_fit,
-      ~ treatment,
-      weights = "equal"
-    )
-
-    log_tukey <- as.data.frame(
-      summary(
-        pairs(log_emm, adjust = "tukey"),
-        infer = c(TRUE, TRUE),
-        type = "link"
+    for (tab in c("anova", "means", "tukey")) {
+      save_csv(
+        z[[tab]],
+        paste0(
+          prefix, "_weed_", nm, "_", tab, ".csv"
+        )
       )
-    )
-
-    save_csv(
-      log_anova,
-      paste0(prefix, "_log_anova.csv")
-    )
-
-    save_csv(
-      log_tukey,
-      paste0(prefix, "_log_tukey.csv")
-    )
+    }
   }
+
+  ggsave(
+    file.path(
+      output_dir,
+      paste0(prefix, "_weed_biomass.png")
+    ),
+    plot = figure,
+    width = 8,
+    height = 5.5,
+    dpi = 600,
+    bg = "white"
+  )
+
+  ggsave(
+    file.path(
+      output_dir,
+      paste0(prefix, "_weed_biomass.pdf")
+    ),
+    plot = figure,
+    width = 8,
+    height = 5.5,
+    bg = "white"
+  )
 
   list(
     location = location_name,
-    fit = fit,
-    anova = anova_results,
-    means = mean_results,
-    tukey = tukey_results,
-    figure = figure,
-    log_anova = log_anova,
-    log_tukey = log_tukey
+    primary = primary,
+    classification = classification,
+    log = log_result,
+    figure = figure
   )
 }
 
@@ -686,96 +754,270 @@ results <- setNames(
   locations
 )
 
-report_location <- function(result) {
-
-  show_table(
-    result$anova,
-    paste(
-      result$location,
-      "- ANOVA"
+format_p <- function(x) {
+  ifelse(
+    is.na(x),
+    "",
+    ifelse(
+      x < 0.001,
+      "<0.001",
+      sprintf("%.3f", x)
     )
   )
+}
+
+report_tables <- function(
+  z,
+  label,
+  include_means = TRUE
+) {
+  a <- z$anova
+  a[["Pr(>F)"]] <- format_p(a[["Pr(>F)"]])
 
   show_table(
-    result$means %>%
+    a,
+    paste(label, "- ANOVA"),
+    digits = 3
+  )
+
+  if (include_means) {
+    show_table(
       select(
+        z$means,
         treatment,
         emmean,
         SE,
         lower.CL,
         upper.CL
       ),
-    paste(
-      result$location,
-      "- adjusted means and 95% confidence intervals"
+      paste(
+        label,
+        "- adjusted means, SEs and individual 95% CIs"
+      ),
+      digits = 2
     )
-  )
+  }
+
+  t <- z$tukey %>%
+    select(
+      contrast,
+      estimate,
+      SE,
+      lower.CL,
+      upper.CL,
+      p.value
+    )
+
+  t$p.value <- format_p(t$p.value)
 
   show_table(
-    result$tukey %>%
-      select(
-        contrast,
-        estimate,
-        lower.CL,
-        upper.CL,
-        p.value
-      ),
-    paste(
-      result$location,
-      "- Tukey-adjusted pairwise comparisons"
-    )
+    t,
+    paste(label, "- Tukey-adjusted comparisons"),
+    digits = 3
   )
-
-  print(result$figure)
-
-  invisible(NULL)
 }
 ```
 
-## Broccoli sampling location
+## Broccoli sampling area: weed biomass
+
+The model compares T2-T4 using samples cut at ground level.
+T1 was sampled at 8 cm and is shown separately below as a reference.
 
 ```{r broccoli-results, results='asis'}
-#### T1 need to be here, with a note that there is no broccoli
-#### show the marginal means and SEs for each treatment.
-#### partition weeds vs. CC biomass and rename plot title and axes accordingly.
-report_location(results[["Broccoli"]]) 
+report_tables(
+  results[["Broccoli"]]$primary,
+  "Broccoli area"
+)
+
+print(results[["Broccoli"]]$figure)
 ```
 
-## Cover-crop sampling location
+### T1 reference: no broccoli or cover crop planted
+
+These are the same T1 plots used in the cover-crop-area analysis.
+They are not additional replicates and are not included in the
+Broccoli-area ANOVA or its Tukey comparisons.
+
+The summary below is a descriptive mean and SE across four blocks,
+not a marginal mean from the Broccoli-area model.
+
+```{r t1-reference}
+t1_reference <- plot_data %>%
+  filter(treatment == "T1") %>%
+  select(
+    block,
+    n_quadrats,
+    weed_g_m2
+  )
+
+t1_summary <- t1_reference %>%
+  summarise(
+    Blocks = n(),
+    Mean_g_m2 = mean(weed_g_m2),
+    SE_g_m2 = sd(weed_g_m2) / sqrt(n())
+  )
+
+knitr::kable(
+  t1_reference,
+  digits = 2,
+  row.names = FALSE
+)
+
+knitr::kable(
+  t1_summary,
+  digits = 2,
+  row.names = FALSE
+)
+
+save_csv(
+  t1_reference,
+  "T1_reference_plot_weed_biomass.csv"
+)
+
+save_csv(
+  t1_summary,
+  "T1_reference_descriptive_summary.csv"
+)
+```
+
+## Cover-crop sampling area: weed biomass
+
+The model compares T1-T4. T1 is the weedy control with no broccoli
+or cover crop planted. All included samples were cut at 8 cm.
 
 ```{r cover-crop-results, results='asis'}
-#### T1 need to be here, with a note that there is no CC
-#### show the marginal means and SEs for each treatment.
-#### partition weeds vs. CC biomass and rename plot title and axes accordingly.
-report_location(results[["Cover crop"]])
+report_tables(
+  results[["Cover crop"]]$primary,
+  "Cover-crop area"
+)
+
+print(results[["Cover crop"]]$figure)
 ```
 
-Adjusted means and pairwise differences are expressed in
-grams per square metre.
+Figure error bars are +/- 1 model-based SE.
+The tables retain individual 95% confidence intervals for means
+and Tukey-adjusted 95% confidence intervals for pairwise differences.
 
-Figure error bars represent individual 95% confidence intervals,
-not standard errors. A negative lower confidence limit can occur
-under the normal linear model and does not represent a negative
-observed biomass measurement.
+## Recorded cover-crop biomass
+
+Only TRFAL is classified as the current sown cover crop.
+Rye weight was not recorded.
+
+The table shows recorded berseem biomass in quadrats where a TRFAL
+record exists. Missing records are not treated as zeros, and these
+data are not presented as complete cover-crop biomass.
+
+The current sparse records are reported descriptively without
+a cover-crop ANOVA.
+
+```{r recorded-cover-crop}
+cc_records <- quadrat_data %>%
+  filter(n_berseem_records > 0) %>%
+  transmute(
+    Block = paste0("B", block),
+    Treatment = paste0("T", treatment),
+    Location = location,
+    Quadrat = quadrat,
+    Area_m2 = area_m2,
+    Weight_g = berseem_g,
+    Biomass_g_m2 = recorded_berseem_g_m2
+  )
+
+knitr::kable(
+  cc_records,
+  digits = 3,
+  row.names = FALSE,
+  caption = "Recorded berseem biomass"
+)
+
+save_csv(
+  cc_records,
+  "recorded_berseem_biomass.csv"
+)
+```
+
+## Legacy clover and unclassified vegetation
+
+Legacy CLOVER is reported separately and included in the primary
+weed response. UNKNOWN BRASSICA and UNKNOWN DICOTS are retained
+as unclassified vegetation and excluded from the primary response.
+
+```{r other-components}
+other_summary <- plot_data %>%
+  group_by(location, treatment) %>%
+  summarise(
+    Blocks = n(),
+    Legacy_g_m2 = mean(legacy_g_m2),
+    Unclassified_g_m2 = mean(unclassified_g_m2),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  other_summary,
+  digits = 2,
+  row.names = FALSE,
+  caption = "Mean legacy-clover and unclassified biomass"
+)
+
+save_csv(
+  other_summary,
+  "legacy_and_unclassified_summary.csv"
+)
+```
+
+## Classification sensitivity analysis
+
+This supplementary analysis adds unclassified vegetation to the
+primary weed response. It evaluates the effect of that specific
+classification choice; it does not establish that the unclassified
+plants are weeds.
+
+Primary and supplementary results are reported together, without
+selecting a classification by its p-value.
+
+```{r classification-sensitivity, results='asis'}
+for (loc in locations) {
+  cat("\n\n### ", loc, "\n\n", sep = "")
+
+  report_tables(
+    results[[loc]]$classification,
+    paste(
+      loc,
+      "- weeds plus unclassified vegetation"
+    )
+  )
+}
+```
 
 ## Model diagnostics
 
-Residual plots are used to assess variance patterns, normality,
-and influential observations.
+Inspect residual spread, normal Q-Q plots and influential observations
+before interpreting the primary models. Shapiro-Wilk tests are
+supplementary and do not establish that all model assumptions hold.
 
-Shapiro-Wilk tests are supplementary. A nonsignificant normality
-test does not establish that all model assumptions are satisfied.
+```{r diagnostics, fig.height=6}
+for (loc in locations) {
+  old_par <- par(mfrow = c(2, 2))
+
+  plot(
+    results[[loc]]$primary$fit,
+    which = c(1, 2, 3, 5),
+    ask = FALSE
+  )
+
+  par(old_par)
+}
+```
 
 ```{r normality-tests}
 normality_results <- bind_rows(
-  lapply(results, function(result) {
-
+  lapply(locations, function(loc) {
     test <- shapiro.test(
-      residuals(result$fit)
+      residuals(results[[loc]]$primary$fit)
     )
 
     data.frame(
-      Location = result$location,
+      Location = loc,
       W = unname(test$statistic),
       p_value = test$p.value
     )
@@ -785,122 +1027,60 @@ normality_results <- bind_rows(
 knitr::kable(
   normality_results,
   digits = 4,
-  caption = "Shapiro-Wilk tests of model residuals"
+  row.names = FALSE
 )
 
 save_csv(
   normality_results,
-  "residual_normality.csv"
+  "weed_residual_normality.csv"
 )
-```
-
-### Broccoli model
-
-```{r broccoli-diagnostics, fig.height=6}
-old_par <- par(mfrow = c(2, 2))
-
-plot(
-  results[["Broccoli"]]$fit,
-  which = c(1, 2, 3, 5),
-  ask = FALSE
-)
-
-par(old_par)
-```
-
-### Cover-crop model
-
-```{r cover-crop-diagnostics, fig.height=6}
-old_par <- par(mfrow = c(2, 2))
-
-plot(
-  results[["Cover crop"]]$fit,
-  which = c(1, 2, 3, 5),
-  ask = FALSE
-)
-
-par(old_par)
 ```
 
 ## Log-scale sensitivity analysis
 
-The primary analysis uses biomass in grams per square metre.
-A separate natural-log analysis assesses whether conclusions
-depend on the response scale.
+A separate analysis of natural-log weed biomass is run only when
+all plot responses are positive. No constant is added to zeros.
+Estimates in these tables are on the natural-log scale.
 
-The sensitivity analysis is not used to choose whichever model
-produces a significant result. Pairwise estimates in this section
-are differences in natural-log biomass.
+```{r log-sensitivity, results='asis'}
+for (loc in locations) {
+  cat("\n\n### ", loc, "\n\n", sep = "")
 
-```{r log-sensitivity-results, results='asis'}
-for (location_name in locations) {
+  z <- results[[loc]]$log
 
-  result <- results[[location_name]]
-
-  cat(
-    "\n\n### ",
-    location_name,
-    "\n\n",
-    sep = ""
-  )
-
-  if (is.null(result$log_anova)) {
-
+  if (is.null(z)) {
     cat(
-      "Log-scale analysis was skipped because at least one ",
-      "plot mean was zero or negative.\n\n",
-      sep = ""
+      "Log analysis skipped because a plot response was zero.\n\n"
     )
-
-    next
-  }
-
-  show_table(
-    result$log_anova,
-    paste(
-      location_name,
-      "- log-scale ANOVA"
-    )
-  )
-
-  show_table(
-    result$log_tukey %>%
-      select(
-        contrast,
-        estimate,
-        lower.CL,
-        upper.CL,
-        p.value
+  } else {
+    report_tables(
+      z,
+      paste(
+        loc,
+        "- natural-log weed biomass"
       ),
-    paste(
-      location_name,
-      "- Tukey comparisons on the natural-log scale"
+      include_means = FALSE
     )
-  )
+  }
 }
 ```
 
 ## Interpretation
 
-Treatment differences are interpreted separately for the two
-sampling locations because their sampling protocols differ.
+Primary results concern recorded weed biomass, including legacy
+clover and excluding unclassified vegetation.
 
-The treatment comparison concerns three mowing schedules:
+T1-T4 comparisons in the cover-crop area include the no-crop control;
+T2-T4 comparisons in the broccoli area concern mowing schedules.
+Differences from T1 cannot be attributed to mowing alone because
+planting also differs.
 
-- T2: one mowing event before transplanting and two after transplanting.
-- T3: one mowing event before transplanting and one after transplanting.
-- T4: one mowing event before transplanting only.
+The two sampling protocols are interpreted separately.
+A nonsignificant test does not demonstrate treatment equivalence.
 
-A nonsignificant result indicates insufficient evidence of a
-treatment difference under the fitted model. It does not demonstrate
-that treatments are equivalent.
-
-Conclusions should consider estimated differences, confidence
-intervals, residual diagnostics, and sensitivity to response scale.
-
-Because all recorded species are included, these results concern
-total vegetation biomass. They do not independently establish
-effects on weed-only biomass or broccoli yield.
+Conclusions should consider effect estimates, uncertainty, diagnostics
+and both sensitivity analyses. The available cover-crop records do not
+establish complete berseem-plus-rye biomass or its treatment response.
 
 ```{r save-session-information, include=FALSE}
 capture.output(
