@@ -1,0 +1,9 @@
+Source: https://raw.githubusercontent.com/Pr1nc3sso/Xilei-Living-cover-crop/master/2-Data/Raw/Vegetation%20survey%20-%20broccoli%20harvest.xlsx
+Downloaded at UTC: 2026-10-29 16:49:38
+Workbook MD5: 333dd6bccea6e16b4e74edb5a95f3da0
+T1: no broccoli or cover crop planted; four 0.16 m2 quadrats per block; cut at 8 cm.
+T2: mowing at -1, +3 and +6 weeks relative to transplanting.
+T3: mowing at -1 and +6 weeks. T4: mowing at -1 week.
+Primary weeds include legacy CLOVER; unclassified vegetation is excluded.
+Classification sensitivity includes unclassified vegetation.
+Rye biomass was not recorded. Missing cover-crop records are not zeros.

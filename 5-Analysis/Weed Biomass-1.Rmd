@@ -911,6 +911,7 @@ The current sparse records are reported descriptively without
 a cover-crop ANOVA.
 
 ```{r recorded-cover-crop}
+#### any "rye" cell in the data set is the rye cover crop. "clover" or specifically "berseem clover" should be used for the berseem clover cover crop instead of "TRFAL", to distinguish sown vegetation vs. volunteers (aka other clover species in the community)
 cc_records <- quadrat_data %>%
   filter(n_berseem_records > 0) %>%
   transmute(
@@ -940,9 +941,11 @@ save_csv(
 
 Legacy CLOVER is reported separately and included in the primary
 weed response. UNKNOWN BRASSICA and UNKNOWN DICOTS are retained
-as unclassified vegetation and excluded from the primary response.
+as unclassified vegetation and excluded from the primary response. 
 
 ```{r other-components}
+#### don't exclude any weed, even if unknown. they go to the total weed biomass 
+####  use "volunteer clover" instead of "legacy clover" 
 other_summary <- plot_data %>%
   group_by(location, treatment) %>%
   summarise(

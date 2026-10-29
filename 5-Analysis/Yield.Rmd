@@ -383,6 +383,8 @@ Negative weeks on the horizontal axis indicate mowing before transplanting.
 Positive weeks indicate mowing after transplanting.
 
 ```{r yield-figure}
+#### add yield from the plastic mulch side, for reference
+
 # Show plot yields and adjusted treatment means +/- 1 SE.
 p <- ggplot(
   plot_data,
