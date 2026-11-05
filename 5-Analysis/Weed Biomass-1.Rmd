@@ -1,11 +1,5 @@
 ---
-title: "Weed Biomass"
-output: html_document
-date: "2026-10-21"
----
-
----
-title: "Total Vegetation Biomass: Effects of Mowing Schedule"
+title: "Weed Biomass: Mowing Treatments and Weedy Control"
 output:
   bookdown::pdf_document2:
     keep_tex: true
@@ -94,52 +88,59 @@ make_anova_table <- function(model) {
 
 ## Research question
 
-Does mowing treatment affect total recorded vegetation biomass
-at broccoli harvest?
+How do mowing schedules affect total weed biomass at broccoli harvest,
+and how do the planted treatments compare with the weedy control?
 
-All three treatments were mown one week before broccoli transplanting.
-Additional mowing followed the treatment-specific schedule:
+- **T1:** weedy control; no broccoli or cover crop planted.
+- **T2:** mowing at 1 week before transplanting and at 3 and 6 weeks
+  after transplanting.
+- **T3:** mowing at 1 week before transplanting and at 6 weeks
+  after transplanting.
+- **T4:** mowing at 1 week before transplanting only.
 
-- **T2:** mown at 3 and 6 weeks after transplanting,
-  giving three mowing events in total.
-- **T3:** mown at 6 weeks after transplanting,
-  giving two mowing events in total.
-- **T4:** no additional mowing after transplanting,
-  giving one mowing event in total.
+Vegetation is assigned to three categories: weeds, volunteers and
+sown cover crops. Total weed biomass includes identified and
+unidentified weeds, including UNKNOWN MONOCOTS, UNKNOWN DICOTS and
+UNKNOWN BRASSICA.
 
-The analysis compares T2, T3, and T4 in four blocks.
+Volunteer clover and sown cover crops are reported separately and
+excluded from total weed biomass.
 
-All recorded species are included, including clovers and unidentified
-taxa. The response is therefore total vegetation biomass.
+TRFAL is displayed as Berseem clover. Existing CLOVER records retain
+their previously confirmed meaning, Volunteer clover. RYE and
+CEREAL RYE identify the sown rye cover crop. TRFRE retains its
+existing classification as a weed.
 
 ## Sampling and statistical methods
 
-The two sampling locations are analysed separately:
+The two sampling protocols are analysed separately:
 
-- **Broccoli:** quadrat area of 0.28 square metres; vegetation cut
-  at ground level.
-- **Cover crop:** quadrat area of 0.16 square metres; vegetation cut
-  at 8 cm above ground.
+- **Broccoli area:** T2-T4; two 0.28-square-metre quadrats per plot,
+  cut at ground level.
+- **Cover-crop area:** T2-T4; two 0.16-square-metre quadrats per plot,
+  cut at 8 cm above ground.
+- **T1:** four 0.16-square-metre quadrats per plot, cut at 8 cm,
+  using the cover-crop-area protocol.
 
-Recorded masses are summed within each quadrat and divided by
-quadrat area. The two quadrat densities are then averaged within
-each plot and sampling location.
+Weed masses are summed within each observed quadrat and divided
+by quadrat area. Quadrat densities are averaged within each plot
+and sampling location.
 
-The plot is the experimental unit. Each sampling location contains
-12 plot means: three treatments in four blocks.
+The plot is the experimental unit: 12 plot means for the Broccoli
+area and 16 for the cover-crop area. Each model includes treatment
+and block as categorical fixed effects.
 
-For each location, the model is:
+Tukey adjustment is applied to all pairwise treatment comparisons
+within each model: three pairs for the Broccoli area and six for
+the cover-crop area.
 
-\[
-\mathrm{Biomass}_{ij}
-=
-\mu + \mathrm{Treatment}_i + \mathrm{Block}_j
-+ \varepsilon_{ij}.
-\]
+T1 is shown separately as a descriptive reference in the Broccoli
+report because its cutting height differs. It is excluded from
+that model.
 
-Treatment and block are fitted as categorical effects.
-Tukey adjustment is applied to the three pairwise treatment
-comparisons within each sampling location.
+Comparisons among T2-T4 address mowing schedules. Comparisons with
+T1 also reflect whether broccoli and cover crops were planted and
+do not isolate a mowing effect.
 
 ## Import and prepare the data
 
@@ -289,28 +290,35 @@ weed_species <- c(
   "OXAST", "PLANA", "POLLA", "POLPE", "POROL", "SETSP",
   "SETPU", "SETVI", "TRFRE", "UNKNOWN MONOCOTS"
 )
+berseem_codes <- c("TRFAL", "BERSEEM CLOVER", "BERSEEM", "TRIFOLIUM ALEXANDRINUM")
+rye_codes <- c("RYE", "CEREAL RYE", "SECALE CEREALE", "SECCE")
+volunteer_codes <- c("CLOVER", "VOLUNTEER CLOVER")
 
 analysis_records <- clean %>%
   mutate(
-    # T1 has already been assigned to the Cover crop protocol.
     area_m2 = if_else(location == "Broccoli", 0.28, 0.16),
+    is_unknown_weed = grepl("^UNKNOWN($| )", species),
     component = case_when(
-      species == "TRFAL" ~ "Sown cover crop",
-      species == "CLOVER" ~ "Legacy clover",
-      species %in% c("UNKNOWN BRASSICA", "UNKNOWN DICOTS") ~
-        "Unclassified",
-      species %in% weed_species ~ "Weeds",
+      species %in% c(berseem_codes, rye_codes) ~ "Cover crop",
+      species %in% volunteer_codes ~ "Volunteer",
+      species %in% weed_species | is_unknown_weed ~ "Weeds",
       TRUE ~ "Unmapped"
+    ),
+    species_label = case_when(
+      species %in% berseem_codes ~ "Berseem clover",
+      species %in% rye_codes ~ "Cereal rye",
+      species %in% volunteer_codes ~ "Volunteer clover",
+      TRUE ~ species
     )
   )
 
 save_csv(
   analysis_records %>%
-    distinct(source_species, species, component),
+    distinct(source_species, species, species_label, component),
   "species_classification.csv"
 )
 
-# New codes must be checked rather than automatically called weeds.
+# Unknown weeds are included; unfamiliar species codes require checking.
 if (any(analysis_records$component == "Unmapped")) {
   save_csv(
     filter(analysis_records, component == "Unmapped"),
@@ -319,10 +327,7 @@ if (any(analysis_records$component == "Unmapped")) {
   stop("New species codes found. Check unmapped_species.csv.")
 }
 
-save_csv(
-  analysis_records,
-  "clean_T1_T4_records.csv"
-)
+save_csv(analysis_records, "clean_T1_T4_records.csv")
 
 save_csv(
   analysis_records %>%
@@ -336,8 +341,8 @@ save_csv(
 )
 
 save_csv(
-  filter(analysis_records, component == "Unclassified"),
-  "unclassified_records.csv"
+  filter(analysis_records, is_unknown_weed),
+  "unknown_weed_records.csv"
 )
 
 # Avoid combining different collection dates within a quadrat.
@@ -345,10 +350,13 @@ date_check <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
     n_dates = n_distinct(collection_date, na.rm = TRUE),
+    n_missing_dates = sum(
+      is.na(collection_date) | trimws(collection_date) == ""
+    ),
     .groups = "drop"
   )
 
-if (any(date_check$n_dates != 1L)) {
+if (any(date_check$n_dates != 1L | date_check$n_missing_dates > 0L)) {
   stop("Missing or multiple collection dates within quadrats.")
 }
 
@@ -357,12 +365,16 @@ quadrat_data <- analysis_records %>%
   group_by(block, treatment, location, quadrat) %>%
   summarise(
     area_m2 = first(area_m2),
-    confirmed_weed_g = sum(weight_g[component == "Weeds"]),
-    legacy_g = sum(weight_g[component == "Legacy clover"]),
-    unclassified_g = sum(weight_g[component == "Unclassified"]),
-    n_berseem_records = sum(component == "Sown cover crop"),
-    berseem_g = if (any(component == "Sown cover crop")) {
-      sum(weight_g[component == "Sown cover crop"])
+    identified_weed_g = sum(
+      weight_g[component == "Weeds" & !is_unknown_weed]
+    ),
+    unknown_weed_g = sum(
+      weight_g[component == "Weeds" & is_unknown_weed]
+    ),
+    volunteer_g = sum(weight_g[component == "Volunteer"]),
+    n_cover_crop_records = sum(component == "Cover crop"),
+    recorded_cover_crop_g = if (any(component == "Cover crop")) {
+      sum(weight_g[component == "Cover crop"])
     } else {
       NA_real_
     },
@@ -370,24 +382,18 @@ quadrat_data <- analysis_records %>%
     .groups = "drop"
   ) %>%
   mutate(
-    confirmed_weed_g_m2 = confirmed_weed_g / area_m2,
-    legacy_g_m2 = legacy_g / area_m2,
-    unclassified_g_m2 = unclassified_g / area_m2,
+    identified_weed_g_m2 = identified_weed_g / area_m2,
+    unknown_weed_g_m2 = unknown_weed_g / area_m2,
+    volunteer_g_m2 = volunteer_g / area_m2,
 
-    # Primary response includes legacy clover.
-    weed_g_m2 = (confirmed_weed_g + legacy_g) / area_m2,
+    # Include unknown weeds; exclude volunteers and sown cover crops.
+    weed_g_m2 = (identified_weed_g + unknown_weed_g) / area_m2,
 
-    # Classification sensitivity includes unclassified vegetation.
-    inclusive_g_m2 = weed_g_m2 + unclassified_g_m2,
-
-    # Missing cover-crop records remain NA.
-    recorded_berseem_g_m2 = berseem_g / area_m2,
+    recorded_cover_crop_g_m2 = recorded_cover_crop_g / area_m2,
     recorded_total_g_m2 = recorded_total_g / area_m2
   )
 
-# Expected layout:
-# T1: 4 blocks x 4 quadrats = 16.
-# T2-T4: 4 blocks x 3 treatments x 2 locations x 2 quadrats = 48.
+# T1: 16 quadrats. T2-T4: 48 quadrats.
 expected_quadrats <- bind_rows(
   expand_grid(
     block = 1:4,
@@ -437,11 +443,10 @@ plot_data <- quadrat_data %>%
     n_quadrats = n(),
     across(
       c(
-        confirmed_weed_g_m2,
-        legacy_g_m2,
-        unclassified_g_m2,
+        identified_weed_g_m2,
+        unknown_weed_g_m2,
+        volunteer_g_m2,
         weed_g_m2,
-        inclusive_g_m2,
         recorded_total_g_m2
       ),
       mean
@@ -468,15 +473,8 @@ if (
   stop("Expected four quadrats for T1 and two per location for T2-T4.")
 }
 
-save_csv(
-  quadrat_data,
-  "quadrat_biomass_components.csv"
-)
-
-save_csv(
-  plot_data,
-  "plot_biomass_components.csv"
-)
+save_csv(quadrat_data, "quadrat_biomass_components.csv")
+save_csv(plot_data, "plot_biomass_components.csv")
 
 writeLines(
   c(
@@ -492,9 +490,13 @@ writeLines(
     "T1: no broccoli or cover crop planted; four 0.16 m2 quadrats per block; cut at 8 cm.",
     "T2: mowing at -1, +3 and +6 weeks relative to transplanting.",
     "T3: mowing at -1 and +6 weeks. T4: mowing at -1 week.",
-    "Primary weeds include legacy CLOVER; unclassified vegetation is excluded.",
-    "Classification sensitivity includes unclassified vegetation.",
-    "Rye biomass was not recorded. Missing cover-crop records are not zeros."
+    "Total weeds include identified and unknown weeds; volunteers and cover crops are excluded.",
+    "TRFAL is displayed as Berseem clover; existing CLOVER records remain Volunteer clover.",
+    "RYE and CEREAL RYE are sown cover crops. Missing species records are not measured zeros.",
+    paste(
+      "Recorded cereal-rye rows:",
+      sum(analysis_records$species_label == "Cereal rye")
+    )
   ),
   file.path(output_dir, "data_source.txt")
 )
@@ -515,10 +517,7 @@ sampling_check <- plot_data %>%
     .groups = "drop"
   )
 
-knitr::kable(
-  sampling_check,
-  row.names = FALSE
-)
+knitr::kable(sampling_check, row.names = FALSE)
 ```
 
 ## Fit the weed models and prepare figures
@@ -526,19 +525,12 @@ knitr::kable(
 ```{r models-and-figures, include=FALSE}
 fit_tables <- function(d, response) {
   fit <- lm(
-    reformulate(
-      c("treatment", "block"),
-      response = response
-    ),
+    reformulate(c("treatment", "block"), response = response),
     data = d,
     na.action = na.fail
   )
 
-  emm <- emmeans(
-    fit,
-    ~ treatment,
-    weights = "equal"
-  )
+  emm <- emmeans(fit, ~ treatment, weights = "equal")
 
   list(
     fit = fit,
@@ -561,11 +553,7 @@ analyse_location <- function(location_name) {
     filter(plot_data, location == location_name)
   )
 
-  expected_n <- if (location_name == "Broccoli") {
-    12L
-  } else {
-    16L
-  }
+  expected_n <- if (location_name == "Broccoli") 12L else 16L
 
   if (
     nrow(d) != expected_n ||
@@ -575,7 +563,6 @@ analyse_location <- function(location_name) {
   }
 
   primary <- fit_tables(d, "weed_g_m2")
-  classification <- fit_tables(d, "inclusive_g_m2")
 
   log_result <- if (all(d$weed_g_m2 > 0)) {
     fit_tables(
@@ -608,15 +595,9 @@ analyse_location <- function(location_name) {
     )
   }
 
-  figure <- ggplot(
-    d,
-    aes(treatment, weed_g_m2)
-  ) +
+  figure <- ggplot(d, aes(treatment, weed_g_m2)) +
     geom_point(
-      aes(
-        colour = treatment,
-        shape = block
-      ),
+      aes(colour = treatment, shape = block),
       position = position_jitter(
         width = 0.06,
         height = 0,
@@ -638,26 +619,17 @@ analyse_location <- function(location_name) {
     geom_point(
       data = primary$means,
       inherit.aes = FALSE,
-      aes(
-        x = treatment,
-        y = emmean
-      ),
+      aes(x = treatment, y = emmean),
       shape = 18,
       size = 4
     ) +
-    scale_x_discrete(
-      labels = treatment_labels
-    ) +
-    scale_colour_manual(
-      values = treatment_colours
-    ) +
-    scale_shape_manual(
-      values = c(16, 17, 15, 3)
-    ) +
+    scale_x_discrete(labels = treatment_labels) +
+    scale_colour_manual(values = treatment_colours) +
+    scale_shape_manual(values = c(16, 17, 15, 3)) +
     expand_limits(y = 0) +
     labs(
       title = paste(
-        "Weed biomass:",
+        "Total weed biomass:",
         location_name,
         "sampling area"
       ),
@@ -669,16 +641,14 @@ analyse_location <- function(location_name) {
         ptext
       ),
       x = "Treatment and mowing weeks relative to transplanting",
-      y = expression(
-        "Weed biomass (g " * m^{-2} * ")"
-      ),
+      y = expression("Total weed biomass (g " * m^{-2} * ")"),
       shape = "Block",
       caption = paste0(
         caption_text,
         "\nPoints: plots; diamonds: adjusted means;",
         " bars: +/- 1 model-based SE.",
-        "\nWeeds include legacy clover;",
-        " unclassified vegetation is excluded."
+        "\nIncludes identified and unknown weeds;",
+        " excludes volunteers and cover crops."
       )
     ) +
     guides(colour = "none") +
@@ -686,19 +656,13 @@ analyse_location <- function(location_name) {
     theme(
       legend.position = "bottom",
       panel.grid.minor = element_blank(),
-      plot.caption = element_text(
-        hjust = 0,
-        size = 8
-      )
+      plot.caption = element_text(hjust = 0, size = 8)
     )
 
-  prefix <- tolower(
-    gsub(" ", "_", location_name)
-  )
+  prefix <- tolower(gsub(" ", "_", location_name))
 
   analyses <- list(
     primary = primary,
-    classification = classification,
     log = log_result
   )
 
@@ -710,18 +674,13 @@ analyse_location <- function(location_name) {
     for (tab in c("anova", "means", "tukey")) {
       save_csv(
         z[[tab]],
-        paste0(
-          prefix, "_weed_", nm, "_", tab, ".csv"
-        )
+        paste0(prefix, "_weed_", nm, "_", tab, ".csv")
       )
     }
   }
 
   ggsave(
-    file.path(
-      output_dir,
-      paste0(prefix, "_weed_biomass.png")
-    ),
+    file.path(output_dir, paste0(prefix, "_weed_biomass.png")),
     plot = figure,
     width = 8,
     height = 5.5,
@@ -730,10 +689,7 @@ analyse_location <- function(location_name) {
   )
 
   ggsave(
-    file.path(
-      output_dir,
-      paste0(prefix, "_weed_biomass.pdf")
-    ),
+    file.path(output_dir, paste0(prefix, "_weed_biomass.pdf")),
     plot = figure,
     width = 8,
     height = 5.5,
@@ -743,7 +699,6 @@ analyse_location <- function(location_name) {
   list(
     location = location_name,
     primary = primary,
-    classification = classification,
     log = log_result,
     figure = figure
   )
@@ -900,58 +855,62 @@ and Tukey-adjusted 95% confidence intervals for pairwise differences.
 
 ## Recorded cover-crop biomass
 
-Only TRFAL is classified as the current sown cover crop.
-Rye weight was not recorded.
+Berseem clover and cereal rye are the sown cover crops. The table below
+reports species-specific biomass only where a source record exists.
+TRFAL is displayed as Berseem clover; existing CLOVER records are
+volunteer clover and are excluded from this table.
 
-The table shows recorded berseem biomass in quadrats where a TRFAL
-record exists. Missing records are not treated as zeros, and these
-data are not presented as complete cover-crop biomass.
+Absence of a biomass record alone does not distinguish a true zero from
+an unrecorded observation. The table is not an estimate of complete
+cover-crop biomass. No cover-crop ANOVA is fitted to these sparse records.
 
-The current sparse records are reported descriptively without
-a cover-crop ANOVA.
-
-```{r recorded-cover-crop}
-#### any "rye" cell in the data set is the rye cover crop. "clover" or specifically "berseem clover" should be used for the berseem clover cover crop instead of "TRFAL", to distinguish sown vegetation vs. volunteers (aka other clover species in the community)
-cc_records <- quadrat_data %>%
-  filter(n_berseem_records > 0) %>%
+```{r recorded-cover-crop, results='asis'}
+cc_records <- analysis_records %>%
+  filter(component == "Cover crop") %>%
+  group_by(block, treatment, location, quadrat, species_label) %>%
+  summarise(
+    Area_m2 = first(area_m2),
+    Weight_g = sum(weight_g),
+    .groups = "drop"
+  ) %>%
   transmute(
     Block = paste0("B", block),
     Treatment = paste0("T", treatment),
     Location = location,
     Quadrat = quadrat,
-    Area_m2 = area_m2,
-    Weight_g = berseem_g,
-    Biomass_g_m2 = recorded_berseem_g_m2
+    Species = species_label,
+    Area_m2,
+    Weight_g,
+    Biomass_g_m2 = Weight_g / Area_m2
   )
 
-knitr::kable(
-  cc_records,
-  digits = 3,
-  row.names = FALSE,
-  caption = "Recorded berseem biomass"
-)
+if (nrow(cc_records) > 0L) {
+  show_table(cc_records, "Recorded sown cover-crop biomass", digits = 3)
+} else {
+  cat("No sown cover-crop biomass records were found in this workbook.\n\n")
+}
 
-save_csv(
-  cc_records,
-  "recorded_berseem_biomass.csv"
-)
+if (!any(analysis_records$species_label == "Cereal rye")) {
+  cat("No cereal-rye biomass records were found in this workbook.\n\n")
+}
+
+save_csv(cc_records, "recorded_cover_crop_biomass.csv")
 ```
 
-## Legacy clover and unclassified vegetation
+## Volunteer clover and unknown weeds
 
-Legacy CLOVER is reported separately and included in the primary
-weed response. UNKNOWN BRASSICA and UNKNOWN DICOTS are retained
-as unclassified vegetation and excluded from the primary response. 
+Volunteer clover is reported separately and excluded from total weed
+biomass. Unknown weeds are shown as a subset of total weed biomass;
+they are already included in the primary analysis above.
 
 ```{r other-components}
-#### don't exclude any weed, even if unknown. they go to the total weed biomass 
-####  use "volunteer clover" instead of "legacy clover" 
 other_summary <- plot_data %>%
   group_by(location, treatment) %>%
   summarise(
     Blocks = n(),
-    Legacy_g_m2 = mean(legacy_g_m2),
-    Unclassified_g_m2 = mean(unclassified_g_m2),
+    Volunteer_clover_g_m2 = mean(volunteer_g_m2),
+    Unknown_weeds_g_m2 = mean(unknown_weed_g_m2),
+    Total_weeds_g_m2 = mean(weed_g_m2),
     .groups = "drop"
   )
 
@@ -959,37 +918,10 @@ knitr::kable(
   other_summary,
   digits = 2,
   row.names = FALSE,
-  caption = "Mean legacy-clover and unclassified biomass"
+  caption = "Volunteer clover, unknown weeds and total weeds: plot-based means"
 )
 
-save_csv(
-  other_summary,
-  "legacy_and_unclassified_summary.csv"
-)
-```
-
-## Classification sensitivity analysis
-
-This supplementary analysis adds unclassified vegetation to the
-primary weed response. It evaluates the effect of that specific
-classification choice; it does not establish that the unclassified
-plants are weeds.
-
-Primary and supplementary results are reported together, without
-selecting a classification by its p-value.
-
-```{r classification-sensitivity, results='asis'}
-for (loc in locations) {
-  cat("\n\n### ", loc, "\n\n", sep = "")
-
-  report_tables(
-    results[[loc]]$classification,
-    paste(
-      loc,
-      "- weeds plus unclassified vegetation"
-    )
-  )
-}
+save_csv(other_summary, "volunteer_and_unknown_weed_summary.csv")
 ```
 
 ## Model diagnostics
@@ -1070,8 +1002,9 @@ for (loc in locations) {
 
 ## Interpretation
 
-Primary results concern recorded weed biomass, including legacy
-clover and excluding unclassified vegetation.
+Primary results concern total recorded weed biomass, including both
+identified and unknown weeds. Volunteer clover, berseem clover and
+cereal rye are excluded from this response.
 
 T1-T4 comparisons in the cover-crop area include the no-crop control;
 T2-T4 comparisons in the broccoli area concern mowing schedules.
@@ -1082,8 +1015,9 @@ The two sampling protocols are interpreted separately.
 A nonsignificant test does not demonstrate treatment equivalence.
 
 Conclusions should consider effect estimates, uncertainty, diagnostics
-and both sensitivity analyses. The available cover-crop records do not
-establish complete berseem-plus-rye biomass or its treatment response.
+and the log-scale sensitivity analysis. The cover-crop table reports
+recorded species-specific biomass; it does not establish complete
+berseem-plus-rye biomass or its treatment response.
 
 ```{r save-session-information, include=FALSE}
 capture.output(
