@@ -255,10 +255,16 @@ or `r plot_area_m2 / 3` square metres.
 Yield in t/ha is calculated as harvested fresh weight in kg divided
 by the effective harvested area in square metres, multiplied by 10.
 
-The analysis includes three mowing treatments and four blocks.
-Each block-by-treatment plot is one replicate. Outer rows and the separate
-plastic-mulch sheet are not included.
+The randomized analysis includes three mowing treatments and four blocks.
+Each block-by-treatment plot is one replicate; outer rows are excluded.
 
+The plastic-mulch sheet is used for a descriptive yield reference only.
+Each of its four sections contains independent East and West beds.
+Each 4-m bed section has the same ground area as the harvested living-mulch
+middle band: `r plot_area_m2 / 3` square metres. All harvest dates and both
+beds are pooled, giving a total reference area of
+`r 4 * 2 * plot_area_m2 / 3` square metres.
+Plastic-mulch records are excluded from the ANOVA and Tukey comparisons.
 With one response per plot, the treatment-by-block interaction cannot be
 estimated separately from residual error. The model assumes additive
 treatment and block effects.
@@ -383,16 +389,116 @@ Negative weeks on the horizontal axis indicate mowing before transplanting.
 Positive weeks indicate mowing after transplanting.
 
 ```{r yield-figure}
-#### add yield from the plastic mulch side, for reference
+# East and West are independent beds.
+# Each 4-m bed section has the same ground area as the
+# harvested middle band in living mulch.
+plastic_bed_area_m2 <- plot_area_m2 / 3
 
-# Show plot yields and adjusted treatment means +/- 1 SE.
+plastic_raw <- read_excel(
+  file_path,
+  sheet = "plastic mulch",
+  range = cell_cols("A:H"),
+  col_types = "text"
+)
+
+names(plastic_raw) <- c(
+  "harvest_date", "section", "row_position", "fresh_weight_g",
+  "grade", "appearance_note", "hollow_core", "marketable"
+)
+
+plastic_dat <- plastic_raw %>%
+  mutate(
+    across(everything(), ~ na_if(trimws(.x), ""))
+  ) %>%
+  filter(
+    if_any(
+      c(harvest_date, section, row_position, fresh_weight_g),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  mutate(
+    row_position = toupper(row_position),
+    row_position = recode(
+      row_position,
+      E = "EAST",
+      W = "WEST"
+    ),
+    fresh_weight_g = as.numeric(fresh_weight_g)
+  )
+
+if (
+  nrow(plastic_dat) == 0L ||
+  anyNA(plastic_dat[c("section", "row_position", "fresh_weight_g")]) ||
+  any(!plastic_dat$section %in% as.character(1:4)) ||
+  any(!plastic_dat$row_position %in% c("EAST", "WEST")) ||
+  any(!is.finite(plastic_dat$fresh_weight_g)) ||
+  any(plastic_dat$fresh_weight_g <= 0)
+) {
+  stop("Check section, row and fresh-weight entries in the plastic mulch sheet.")
+}
+
+# Pool all harvest dates and all weighed heads.
+# Include nonmarketable heads to match the living-mulch response.
+plastic_bed_data <- plastic_dat %>%
+  group_by(section, row_position) %>%
+  summarise(
+    heads = n(),
+    yield_kg = sum(fresh_weight_g) / 1000,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    harvest_area_m2 = plastic_bed_area_m2,
+    yield_t_ha = yield_kg / harvest_area_m2 * 10
+  )
+
+if (
+  nrow(plastic_bed_data) != 8L ||
+  !all(
+    table(
+      plastic_bed_data$section,
+      plastic_bed_data$row_position
+    ) == 1L
+  )
+) {
+  stop("Expected East and West records for each of the four plastic sections.")
+}
+
+# One pooled descriptive reference; not an additional model treatment.
+plastic_reference <- plastic_bed_data %>%
+  summarise(
+    bed_sections = n(),
+    heads = sum(heads),
+    total_yield_kg = sum(yield_kg),
+    total_area_m2 = sum(harvest_area_m2)
+  ) %>%
+  mutate(
+    yield_t_ha = total_yield_kg / total_area_m2 * 10
+  )
+
+plastic_ref_t_ha <- plastic_reference$yield_t_ha
+
+write.csv(
+  plastic_bed_data,
+  file.path(output_dir, "Plastic_mulch_bed_yield.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  plastic_reference,
+  file.path(output_dir, "Plastic_mulch_reference.csv"),
+  row.names = FALSE
+)
+
 p <- ggplot(
   plot_data,
-  aes(
-    x = treatment,
-    y = yield_t_ha
-  )
+  aes(x = treatment, y = yield_t_ha)
 ) +
+  geom_hline(
+    yintercept = plastic_ref_t_ha,
+    linetype = "dashed",
+    colour = "#346B87",
+    linewidth = 0.8
+  ) +
   geom_point(
     aes(shape = block),
     position = position_dodge(width = 0.4),
@@ -412,35 +518,37 @@ p <- ggplot(
   geom_point(
     data = emm_table,
     inherit.aes = FALSE,
-    aes(
-      x = treatment,
-      y = emmean
-    ),
+    aes(x = treatment, y = emmean),
     shape = 18,
     size = 4
   ) +
-  scale_x_discrete(
-    labels = treatment_labels
-  ) +
+  scale_x_discrete(labels = treatment_labels) +
   expand_limits(y = 0) +
   labs(
+    subtitle = sprintf(
+      "Dashed line: plastic mulch reference = %.2f t/ha",
+      plastic_ref_t_ha
+    ),
     x = "Mowing times relative to transplanting",
     y = "Harvested fresh yield (t/ha)",
     shape = "Block",
     caption = paste0(
-      "Negative weeks: before transplanting; positive weeks: after transplanting.\n",
-      "Small points = plots; diamonds = adjusted means; bars = +/- 1 model-based SE."
+      "Living mulch: points = plots; diamonds = adjusted means; bars = +/- 1 model-based SE.\n",
+      "Plastic mulch: pooled fresh yield from four sections, each with independent East and West beds.\n",
+      sprintf(
+        "Each bed section: %.2f m2; reference only, excluded from ANOVA and Tukey tests.",
+        plastic_bed_area_m2
+      )
     )
   ) +
   theme_classic(base_size = 11) +
   theme(
     legend.position = "bottom",
-    plot.caption = element_text(hjust = 0)
+    plot.caption = element_text(hjust = 0, size = 8)
   )
 
 print(p)
 ```
-
 ## Model diagnostics
 
 Inspect residual spread and the normal Q-Q plot before interpreting the
