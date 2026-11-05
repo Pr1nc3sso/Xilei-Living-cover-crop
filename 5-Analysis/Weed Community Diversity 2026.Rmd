@@ -293,6 +293,8 @@ are supplementary and adjusted within each endpoint/stratum, not across the
 entire report.
 
 ```{r test-functions}
+#### explain why each parameter was chosen and provide a reference for each
+
 permutations <- function(v) {
   if (length(v)==1L) return(matrix(v, nrow=1L))
   do.call(rbind, lapply(seq_along(v), function(i)
@@ -397,6 +399,8 @@ show_table(primary$pairs)
 ```
 
 ```{r primary-figure, fig.height=7}
+#### T1 is needed in the graph for comparison
+
 d <- plot_means[plot_means$Analysis=="Total weeds" & plot_means$Treatment!="T1", ]
 long <- do.call(rbind, lapply(metrics, function(m) {
   z <- d[c("Block", "Treatment", "Stratum")]

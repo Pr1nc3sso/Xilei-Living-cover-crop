@@ -389,6 +389,8 @@ Negative weeks on the horizontal axis indicate mowing before transplanting.
 Positive weeks indicate mowing after transplanting.
 
 ```{r yield-figure}
+#### information to add: living mulch plot size, explanation of the difference in transplanting timing between the living mulch area and plastic mulch due to weather adversity and equipment complication, per crown weight
+
 # East and West are independent beds.
 # Each 4-m bed section has the same ground area as the
 # harvested middle band in living mulch.

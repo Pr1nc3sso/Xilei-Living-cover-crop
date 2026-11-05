@@ -1,0 +1,4 @@
+"Analysis","Stratum","Metric","N_plots","F","df1","df2","Parametric_p","Exact_p","Permutations","Exact_p_BH","Parametric_p_BH"
+"Total weeds","Cover_crop","Richness",16,0.672740795834883,3,9,0.59002942480953,,,,0.885044137214296
+"Total weeds","Cover_crop","Inverse_Simpson",16,0.802291051013856,3,9,0.52335265049441,,,,0.885044137214296
+"Total weeds","Cover_crop","Simpson_evenness",16,0.16737752804741,3,9,0.915703387125756,,,,0.915703387125756

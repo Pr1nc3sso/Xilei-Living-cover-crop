@@ -1,0 +1,85 @@
+"Block","Treatment","Stratum","Broad_category","Mean_quadrat_biomass_g","Mean_biomass_g_m2","N_quadrats"
+"B1","T1","Cover_crop","Cover crop",0,0,4
+"B1","T1","Cover_crop","Volunteer",0,0,4
+"B1","T1","Cover_crop","Weed",50.0425,312.765625,4
+"B1","T2","Broccoli","Cover crop",0,0,2
+"B1","T2","Broccoli","Volunteer",0,0,2
+"B1","T2","Broccoli","Weed",11.765,42.0178571428571,2
+"B1","T2","Cover_crop","Cover crop",0.395,2.46875,2
+"B1","T2","Cover_crop","Volunteer",1.53,9.5625,2
+"B1","T2","Cover_crop","Weed",32.185,201.15625,2
+"B1","T3","Broccoli","Cover crop",0,0,2
+"B1","T3","Broccoli","Volunteer",0.265,0.946428571428571,2
+"B1","T3","Broccoli","Weed",5.615,20.0535714285714,2
+"B1","T3","Cover_crop","Cover crop",0,0,2
+"B1","T3","Cover_crop","Volunteer",0.76,4.75,2
+"B1","T3","Cover_crop","Weed",30.07,187.9375,2
+"B1","T4","Broccoli","Cover crop",0,0,2
+"B1","T4","Broccoli","Volunteer",0.125,0.446428571428571,2
+"B1","T4","Broccoli","Weed",62.97,224.892857142857,2
+"B1","T4","Cover_crop","Cover crop",0,0,2
+"B1","T4","Cover_crop","Volunteer",2.885,18.03125,2
+"B1","T4","Cover_crop","Weed",55.61,347.5625,2
+"B2","T1","Cover_crop","Cover crop",0,0,4
+"B2","T1","Cover_crop","Volunteer",0.04,0.25,4
+"B2","T1","Cover_crop","Weed",62.4575,390.359375,4
+"B2","T2","Broccoli","Cover crop",0,0,2
+"B2","T2","Broccoli","Volunteer",0,0,2
+"B2","T2","Broccoli","Weed",45.31,161.821428571429,2
+"B2","T2","Cover_crop","Cover crop",0,0,2
+"B2","T2","Cover_crop","Volunteer",0.67,4.1875,2
+"B2","T2","Cover_crop","Weed",17.615,110.09375,2
+"B2","T3","Broccoli","Cover crop",0,0,2
+"B2","T3","Broccoli","Volunteer",0.545,1.94642857142857,2
+"B2","T3","Broccoli","Weed",14.53,51.8928571428571,2
+"B2","T3","Cover_crop","Cover crop",0,0,2
+"B2","T3","Cover_crop","Volunteer",1.04,6.5,2
+"B2","T3","Cover_crop","Weed",51.195,319.96875,2
+"B2","T4","Broccoli","Cover crop",0,0,2
+"B2","T4","Broccoli","Volunteer",0,0,2
+"B2","T4","Broccoli","Weed",39.395,140.696428571429,2
+"B2","T4","Cover_crop","Cover crop",0,0,2
+"B2","T4","Cover_crop","Volunteer",2.365,14.78125,2
+"B2","T4","Cover_crop","Weed",57.845,361.53125,2
+"B3","T1","Cover_crop","Cover crop",0,0,4
+"B3","T1","Cover_crop","Volunteer",0,0,4
+"B3","T1","Cover_crop","Weed",68.3575,427.234375,4
+"B3","T2","Broccoli","Cover crop",0,0,2
+"B3","T2","Broccoli","Volunteer",0,0,2
+"B3","T2","Broccoli","Weed",16.8,60,2
+"B3","T2","Cover_crop","Cover crop",0,0,2
+"B3","T2","Cover_crop","Volunteer",0.305,1.90625,2
+"B3","T2","Cover_crop","Weed",32.18,201.125,2
+"B3","T3","Broccoli","Cover crop",0,0,2
+"B3","T3","Broccoli","Volunteer",0,0,2
+"B3","T3","Broccoli","Weed",9.145,32.6607142857143,2
+"B3","T3","Cover_crop","Cover crop",0,0,2
+"B3","T3","Cover_crop","Volunteer",0.86,5.375,2
+"B3","T3","Cover_crop","Weed",33.065,206.65625,2
+"B3","T4","Broccoli","Cover crop",0,0,2
+"B3","T4","Broccoli","Volunteer",0.46,1.64285714285714,2
+"B3","T4","Broccoli","Weed",45.91,163.964285714286,2
+"B3","T4","Cover_crop","Cover crop",0,0,2
+"B3","T4","Cover_crop","Volunteer",0.66,4.125,2
+"B3","T4","Cover_crop","Weed",42.495,265.59375,2
+"B4","T1","Cover_crop","Cover crop",0,0,4
+"B4","T1","Cover_crop","Volunteer",0,0,4
+"B4","T1","Cover_crop","Weed",61.995,387.46875,4
+"B4","T2","Broccoli","Cover crop",0,0,2
+"B4","T2","Broccoli","Volunteer",0.015,0.0535714285714286,2
+"B4","T2","Broccoli","Weed",18.855,67.3392857142857,2
+"B4","T2","Cover_crop","Cover crop",0,0,2
+"B4","T2","Cover_crop","Volunteer",0.895,5.59375,2
+"B4","T2","Cover_crop","Weed",95.3,595.625,2
+"B4","T3","Broccoli","Cover crop",0,0,2
+"B4","T3","Broccoli","Volunteer",0.455,1.625,2
+"B4","T3","Broccoli","Weed",17.095,61.0535714285714,2
+"B4","T3","Cover_crop","Cover crop",0,0,2
+"B4","T3","Cover_crop","Volunteer",0.155,0.96875,2
+"B4","T3","Cover_crop","Weed",50.44,315.25,2
+"B4","T4","Broccoli","Cover crop",0,0,2
+"B4","T4","Broccoli","Volunteer",0,0,2
+"B4","T4","Broccoli","Weed",62.805,224.303571428571,2
+"B4","T4","Cover_crop","Cover crop",0,0,2
+"B4","T4","Cover_crop","Volunteer",0.305,1.90625,2
+"B4","T4","Cover_crop","Weed",56.98,356.125,2

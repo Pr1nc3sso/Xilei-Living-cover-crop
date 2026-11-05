@@ -1,1 +1,1 @@
-"block","treatment","location","quadrat","area_m2","confirmed_weed_g","legacy_g","unclassified_g","n_berseem_records","berseem_g","recorded_total_g","confirmed_weed_g_m2","legacy_g_m2","unclassified_g_m2","weed_g_m2","inclusive_g_m2","recorded_berseem_g_m2","recorded_total_g_m2"
+"block","treatment","location","quadrat","area_m2","identified_weed_g","unknown_weed_g","volunteer_g","n_cover_crop_records","recorded_cover_crop_g","recorded_total_g","identified_weed_g_m2","unknown_weed_g_m2","volunteer_g_m2","weed_g_m2","recorded_cover_crop_g_m2","recorded_total_g_m2"

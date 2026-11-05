@@ -1,0 +1,193 @@
+"Sample_ID","Broad_category","Biomass_g","Block","Treatment","Quadrat","Location","Stratum","Area_m2","Cutting_height_cm","Collection_date","Biomass_g_m2"
+"B1_T1_Cover_crop_Q1","Cover crop",0,"B1","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q1","Volunteer",0,"B1","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q1","Weed",32.95,"B1","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,205.9375
+"B1_T1_Cover_crop_Q2","Cover crop",0,"B1","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q2","Volunteer",0,"B1","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q2","Weed",75.92,"B1","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,474.5
+"B1_T1_Cover_crop_Q3","Cover crop",0,"B1","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q3","Volunteer",0,"B1","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q3","Weed",57.16,"B1","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,357.25
+"B1_T1_Cover_crop_Q4","Cover crop",0,"B1","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q4","Volunteer",0,"B1","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B1_T1_Cover_crop_Q4","Weed",34.14,"B1","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,213.375
+"B1_T2_Broccoli_Q1","Cover crop",0,"B1","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T2_Broccoli_Q1","Volunteer",0,"B1","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T2_Broccoli_Q1","Weed",10.77,"B1","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,38.4642857142857
+"B1_T2_Broccoli_Q2","Cover crop",0,"B1","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T2_Broccoli_Q2","Volunteer",0,"B1","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T2_Broccoli_Q2","Weed",12.76,"B1","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,45.5714285714286
+"B1_T2_Cover_crop_Q1","Cover crop",0,"B1","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T2_Cover_crop_Q1","Volunteer",3.06,"B1","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,19.125
+"B1_T2_Cover_crop_Q1","Weed",37.08,"B1","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,231.75
+"B1_T2_Cover_crop_Q2","Cover crop",0.79,"B1","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,4.9375
+"B1_T2_Cover_crop_Q2","Volunteer",0,"B1","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T2_Cover_crop_Q2","Weed",27.29,"B1","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,170.5625
+"B1_T3_Broccoli_Q1","Cover crop",0,"B1","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T3_Broccoli_Q1","Volunteer",0,"B1","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T3_Broccoli_Q1","Weed",8,"B1","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,28.5714285714286
+"B1_T3_Broccoli_Q2","Cover crop",0,"B1","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T3_Broccoli_Q2","Volunteer",0.53,"B1","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,1.89285714285714
+"B1_T3_Broccoli_Q2","Weed",3.23,"B1","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,11.5357142857143
+"B1_T3_Cover_crop_Q1","Cover crop",0,"B1","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T3_Cover_crop_Q1","Volunteer",1.52,"B1","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,9.5
+"B1_T3_Cover_crop_Q1","Weed",8.76,"B1","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,54.75
+"B1_T3_Cover_crop_Q2","Cover crop",0,"B1","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T3_Cover_crop_Q2","Volunteer",0,"B1","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T3_Cover_crop_Q2","Weed",51.38,"B1","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,321.125
+"B1_T4_Broccoli_Q1","Cover crop",0,"B1","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T4_Broccoli_Q1","Volunteer",0.25,"B1","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0.892857142857143
+"B1_T4_Broccoli_Q1","Weed",67.26,"B1","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,240.214285714286
+"B1_T4_Broccoli_Q2","Cover crop",0,"B1","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T4_Broccoli_Q2","Volunteer",0,"B1","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B1_T4_Broccoli_Q2","Weed",58.68,"B1","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,209.571428571429
+"B1_T4_Cover_crop_Q1","Cover crop",0,"B1","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T4_Cover_crop_Q1","Volunteer",0,"B1","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T4_Cover_crop_Q1","Weed",32.77,"B1","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,204.8125
+"B1_T4_Cover_crop_Q2","Cover crop",0,"B1","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B1_T4_Cover_crop_Q2","Volunteer",5.77,"B1","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,36.0625
+"B1_T4_Cover_crop_Q2","Weed",78.45,"B1","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,490.3125
+"B2_T1_Cover_crop_Q1","Cover crop",0,"B2","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q1","Volunteer",0,"B2","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q1","Weed",83.31,"B2","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,520.6875
+"B2_T1_Cover_crop_Q2","Cover crop",0,"B2","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q2","Volunteer",0,"B2","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q2","Weed",59.97,"B2","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,374.8125
+"B2_T1_Cover_crop_Q3","Cover crop",0,"B2","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q3","Volunteer",0.16,"B2","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,1
+"B2_T1_Cover_crop_Q3","Weed",61.71,"B2","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,385.6875
+"B2_T1_Cover_crop_Q4","Cover crop",0,"B2","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q4","Volunteer",0,"B2","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B2_T1_Cover_crop_Q4","Weed",44.84,"B2","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,280.25
+"B2_T2_Broccoli_Q1","Cover crop",0,"B2","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T2_Broccoli_Q1","Volunteer",0,"B2","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T2_Broccoli_Q1","Weed",82.1,"B2","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,293.214285714286
+"B2_T2_Broccoli_Q2","Cover crop",0,"B2","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T2_Broccoli_Q2","Volunteer",0,"B2","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T2_Broccoli_Q2","Weed",8.52,"B2","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,30.4285714285714
+"B2_T2_Cover_crop_Q1","Cover crop",0,"B2","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T2_Cover_crop_Q1","Volunteer",1.03,"B2","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,6.4375
+"B2_T2_Cover_crop_Q1","Weed",18.57,"B2","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,116.0625
+"B2_T2_Cover_crop_Q2","Cover crop",0,"B2","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T2_Cover_crop_Q2","Volunteer",0.31,"B2","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,1.9375
+"B2_T2_Cover_crop_Q2","Weed",16.66,"B2","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,104.125
+"B2_T3_Broccoli_Q1","Cover crop",0,"B2","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T3_Broccoli_Q1","Volunteer",0,"B2","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T3_Broccoli_Q1","Weed",20.54,"B2","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,73.3571428571428
+"B2_T3_Broccoli_Q2","Cover crop",0,"B2","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T3_Broccoli_Q2","Volunteer",1.09,"B2","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,3.89285714285714
+"B2_T3_Broccoli_Q2","Weed",8.52,"B2","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,30.4285714285714
+"B2_T3_Cover_crop_Q1","Cover crop",0,"B2","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T3_Cover_crop_Q1","Volunteer",1,"B2","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,6.25
+"B2_T3_Cover_crop_Q1","Weed",41.05,"B2","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,256.5625
+"B2_T3_Cover_crop_Q2","Cover crop",0,"B2","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T3_Cover_crop_Q2","Volunteer",1.08,"B2","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,6.75
+"B2_T3_Cover_crop_Q2","Weed",61.34,"B2","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,383.375
+"B2_T4_Broccoli_Q1","Cover crop",0,"B2","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T4_Broccoli_Q1","Volunteer",0,"B2","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T4_Broccoli_Q1","Weed",32.87,"B2","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,117.392857142857
+"B2_T4_Broccoli_Q2","Cover crop",0,"B2","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T4_Broccoli_Q2","Volunteer",0,"B2","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B2_T4_Broccoli_Q2","Weed",45.92,"B2","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,164
+"B2_T4_Cover_crop_Q1","Cover crop",0,"B2","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T4_Cover_crop_Q1","Volunteer",2.46,"B2","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,15.375
+"B2_T4_Cover_crop_Q1","Weed",52.04,"B2","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,325.25
+"B2_T4_Cover_crop_Q2","Cover crop",0,"B2","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B2_T4_Cover_crop_Q2","Volunteer",2.27,"B2","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,14.1875
+"B2_T4_Cover_crop_Q2","Weed",63.65,"B2","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,397.8125
+"B3_T1_Cover_crop_Q1","Cover crop",0,"B3","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q1","Volunteer",0,"B3","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q1","Weed",39.91,"B3","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-09,249.4375
+"B3_T1_Cover_crop_Q2","Cover crop",0,"B3","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q2","Volunteer",0,"B3","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q2","Weed",102.87,"B3","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-09,642.9375
+"B3_T1_Cover_crop_Q3","Cover crop",0,"B3","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q3","Volunteer",0,"B3","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q3","Weed",46.83,"B3","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-09,292.6875
+"B3_T1_Cover_crop_Q4","Cover crop",0,"B3","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q4","Volunteer",0,"B3","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,0
+"B3_T1_Cover_crop_Q4","Weed",83.82,"B3","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-09,523.875
+"B3_T2_Broccoli_Q1","Cover crop",0,"B3","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T2_Broccoli_Q1","Volunteer",0,"B3","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T2_Broccoli_Q1","Weed",16.46,"B3","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-09,58.7857142857143
+"B3_T2_Broccoli_Q2","Cover crop",0,"B3","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T2_Broccoli_Q2","Volunteer",0,"B3","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T2_Broccoli_Q2","Weed",17.14,"B3","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-09,61.2142857142857
+"B3_T2_Cover_crop_Q1","Cover crop",0,"B3","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T2_Cover_crop_Q1","Volunteer",0.61,"B3","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,3.8125
+"B3_T2_Cover_crop_Q1","Weed",33.46,"B3","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,209.125
+"B3_T2_Cover_crop_Q2","Cover crop",0,"B3","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T2_Cover_crop_Q2","Volunteer",0,"B3","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T2_Cover_crop_Q2","Weed",30.9,"B3","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,193.125
+"B3_T3_Broccoli_Q1","Cover crop",0,"B3","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T3_Broccoli_Q1","Volunteer",0,"B3","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T3_Broccoli_Q1","Weed",11.8,"B3","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-09,42.1428571428571
+"B3_T3_Broccoli_Q2","Cover crop",0,"B3","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T3_Broccoli_Q2","Volunteer",0,"B3","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T3_Broccoli_Q2","Weed",6.49,"B3","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-09,23.1785714285714
+"B3_T3_Cover_crop_Q1","Cover crop",0,"B3","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T3_Cover_crop_Q1","Volunteer",0,"B3","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T3_Cover_crop_Q1","Weed",5.86,"B3","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,36.625
+"B3_T3_Cover_crop_Q2","Cover crop",0,"B3","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T3_Cover_crop_Q2","Volunteer",1.72,"B3","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,10.75
+"B3_T3_Cover_crop_Q2","Weed",60.27,"B3","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,376.6875
+"B3_T4_Broccoli_Q1","Cover crop",0,"B3","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T4_Broccoli_Q1","Volunteer",0,"B3","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T4_Broccoli_Q1","Weed",65.97,"B3","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-09,235.607142857143
+"B3_T4_Broccoli_Q2","Cover crop",0,"B3","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,0
+"B3_T4_Broccoli_Q2","Volunteer",0.92,"B3","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,3.28571428571429
+"B3_T4_Broccoli_Q2","Weed",25.85,"B3","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-09,92.3214285714286
+"B3_T4_Cover_crop_Q1","Cover crop",0,"B3","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T4_Cover_crop_Q1","Volunteer",1.32,"B3","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,8.25
+"B3_T4_Cover_crop_Q1","Weed",54.22,"B3","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-09,338.875
+"B3_T4_Cover_crop_Q2","Cover crop",0,"B3","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T4_Cover_crop_Q2","Volunteer",0,"B3","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,0
+"B3_T4_Cover_crop_Q2","Weed",30.77,"B3","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-09,192.3125
+"B4_T1_Cover_crop_Q1","Cover crop",0,"B4","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q1","Volunteer",0,"B4","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q1","Weed",79.01,"B4","T1",1,"Weedy check","Cover_crop",0.16,8,2026-09-11,493.8125
+"B4_T1_Cover_crop_Q2","Cover crop",0,"B4","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q2","Volunteer",0,"B4","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q2","Weed",34.41,"B4","T1",2,"Weedy check","Cover_crop",0.16,8,2026-09-11,215.0625
+"B4_T1_Cover_crop_Q3","Cover crop",0,"B4","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q3","Volunteer",0,"B4","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q3","Weed",66.85,"B4","T1",3,"Weedy check","Cover_crop",0.16,8,2026-09-11,417.8125
+"B4_T1_Cover_crop_Q4","Cover crop",0,"B4","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q4","Volunteer",0,"B4","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,0
+"B4_T1_Cover_crop_Q4","Weed",67.71,"B4","T1",4,"Weedy check","Cover_crop",0.16,8,2026-09-11,423.1875
+"B4_T2_Broccoli_Q1","Cover crop",0,"B4","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T2_Broccoli_Q1","Volunteer",0.03,"B4","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0.107142857142857
+"B4_T2_Broccoli_Q1","Weed",15.44,"B4","T2",1,"Broccoli","Broccoli",0.28,0,2026-09-11,55.1428571428571
+"B4_T2_Broccoli_Q2","Cover crop",0,"B4","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T2_Broccoli_Q2","Volunteer",0,"B4","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T2_Broccoli_Q2","Weed",22.27,"B4","T2",2,"Broccoli","Broccoli",0.28,0,2026-09-11,79.5357142857143
+"B4_T2_Cover_crop_Q1","Cover crop",0,"B4","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T2_Cover_crop_Q1","Volunteer",0,"B4","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T2_Cover_crop_Q1","Weed",116.88,"B4","T2",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,730.5
+"B4_T2_Cover_crop_Q2","Cover crop",0,"B4","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T2_Cover_crop_Q2","Volunteer",1.79,"B4","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,11.1875
+"B4_T2_Cover_crop_Q2","Weed",73.72,"B4","T2",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,460.75
+"B4_T3_Broccoli_Q1","Cover crop",0,"B4","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T3_Broccoli_Q1","Volunteer",0.91,"B4","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,3.25
+"B4_T3_Broccoli_Q1","Weed",23.73,"B4","T3",1,"Broccoli","Broccoli",0.28,0,2026-09-11,84.75
+"B4_T3_Broccoli_Q2","Cover crop",0,"B4","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T3_Broccoli_Q2","Volunteer",0,"B4","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T3_Broccoli_Q2","Weed",10.46,"B4","T3",2,"Broccoli","Broccoli",0.28,0,2026-09-11,37.3571428571428
+"B4_T3_Cover_crop_Q1","Cover crop",0,"B4","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T3_Cover_crop_Q1","Volunteer",0,"B4","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T3_Cover_crop_Q1","Weed",56.44,"B4","T3",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,352.75
+"B4_T3_Cover_crop_Q2","Cover crop",0,"B4","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T3_Cover_crop_Q2","Volunteer",0.31,"B4","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,1.9375
+"B4_T3_Cover_crop_Q2","Weed",44.44,"B4","T3",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,277.75
+"B4_T4_Broccoli_Q1","Cover crop",0,"B4","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T4_Broccoli_Q1","Volunteer",0,"B4","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T4_Broccoli_Q1","Weed",67.54,"B4","T4",1,"Broccoli","Broccoli",0.28,0,2026-09-11,241.214285714286
+"B4_T4_Broccoli_Q2","Cover crop",0,"B4","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T4_Broccoli_Q2","Volunteer",0,"B4","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,0
+"B4_T4_Broccoli_Q2","Weed",58.07,"B4","T4",2,"Broccoli","Broccoli",0.28,0,2026-09-11,207.392857142857
+"B4_T4_Cover_crop_Q1","Cover crop",0,"B4","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T4_Cover_crop_Q1","Volunteer",0,"B4","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T4_Cover_crop_Q1","Weed",59.24,"B4","T4",1,"Cover crop","Cover_crop",0.16,8,2026-09-11,370.25
+"B4_T4_Cover_crop_Q2","Cover crop",0,"B4","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,0
+"B4_T4_Cover_crop_Q2","Volunteer",0.61,"B4","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,3.8125
+"B4_T4_Cover_crop_Q2","Weed",54.72,"B4","T4",2,"Cover crop","Cover_crop",0.16,8,2026-09-11,342

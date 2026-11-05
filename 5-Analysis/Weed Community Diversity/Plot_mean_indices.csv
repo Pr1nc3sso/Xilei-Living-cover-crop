@@ -1,0 +1,57 @@
+"Analysis","Block","Treatment","Stratum","Richness","Inverse_Simpson","Simpson_evenness","N_quadrats"
+"Identified weed codes","B1","T1","Cover_crop",3.5,1.72758704853252,0.522919030665761,4
+"Identified weed codes","B1","T2","Broccoli",5.5,2.2586958863493,0.408092031855009,2
+"Identified weed codes","B1","T2","Cover_crop",6.5,3.09722274724194,0.472987526515591,2
+"Identified weed codes","B1","T3","Broccoli",6.5,3.67025277385473,0.59270613375303,2
+"Identified weed codes","B1","T3","Cover_crop",4.5,2.62338365985282,0.580686430725679,2
+"Identified weed codes","B1","T4","Broccoli",5.5,2.6280873773597,0.47712458677131,2
+"Identified weed codes","B1","T4","Cover_crop",4,1.95637641047226,0.489094102618065,2
+"Identified weed codes","B2","T1","Cover_crop",7.25,2.20028718692239,0.310074199219462,4
+"Identified weed codes","B2","T2","Broccoli",5.5,1.70942061870727,0.302024605940672,2
+"Identified weed codes","B2","T2","Cover_crop",6,3.59206509989676,0.577978639502485,2
+"Identified weed codes","B2","T3","Broccoli",5.5,2.55342718738327,0.461935490052306,2
+"Identified weed codes","B2","T3","Cover_crop",8,1.74424804942893,0.22008212770421,2
+"Identified weed codes","B2","T4","Broccoli",3,1.59312218788424,0.531040729294746,2
+"Identified weed codes","B2","T4","Cover_crop",7.5,2.20573654552763,0.295290716182294,2
+"Identified weed codes","B3","T1","Cover_crop",4.25,1.97573143004988,0.486921947166987,4
+"Identified weed codes","B3","T2","Broccoli",5.5,2.52437964715615,0.462003943733931,2
+"Identified weed codes","B3","T2","Cover_crop",5.5,2.04035669635339,0.407897753485144,2
+"Identified weed codes","B3","T3","Broccoli",7,2.33472808412655,0.348546606316275,2
+"Identified weed codes","B3","T3","Cover_crop",4,2.32632741038551,0.581581852596377,2
+"Identified weed codes","B3","T4","Broccoli",6.5,3.32114531114259,0.520697906577422,2
+"Identified weed codes","B3","T4","Cover_crop",6,2.45070639623547,0.411809285033016,2
+"Identified weed codes","B4","T1","Cover_crop",5,2.73605136317622,0.555065399787974,4
+"Identified weed codes","B4","T2","Broccoli",7.5,3.65680664003605,0.514290847045213,2
+"Identified weed codes","B4","T2","Cover_crop",5.5,1.9394980855314,0.337437842540925,2
+"Identified weed codes","B4","T3","Broccoli",6,3.56175353191994,0.596034494785618,2
+"Identified weed codes","B4","T3","Cover_crop",5,2.27204286683203,0.454408573366406,2
+"Identified weed codes","B4","T4","Broccoli",4,1.32876895678449,0.332192239196121,2
+"Identified weed codes","B4","T4","Cover_crop",6.5,2.80182391304792,0.438225508873939,2
+"Total weeds","B1","T1","Cover_crop",4,1.76296061390669,0.4570541080491,4
+"Total weeds","B1","T2","Broccoli",6,2.37308391316556,0.395513985527593,2
+"Total weeds","B1","T2","Cover_crop",7.5,3.2719740205137,0.432659845333183,2
+"Total weeds","B1","T3","Broccoli",6.5,3.67025277385473,0.59270613375303,2
+"Total weeds","B1","T3","Cover_crop",5.5,3.03738823537737,0.554804146652554,2
+"Total weeds","B1","T4","Broccoli",5.5,2.6280873773597,0.47712458677131,2
+"Total weeds","B1","T4","Cover_crop",5,2.23587179869745,0.447174359739491,2
+"Total weeds","B2","T1","Cover_crop",8.5,2.33127312144573,0.278924440203155,4
+"Total weeds","B2","T2","Broccoli",5.5,1.70942061870727,0.302024605940672,2
+"Total weeds","B2","T2","Cover_crop",7,4.25935973446799,0.583007914469764,2
+"Total weeds","B2","T3","Broccoli",5.5,2.55342718738327,0.461935490052306,2
+"Total weeds","B2","T3","Cover_crop",9,1.82701853632925,0.204159898563058,2
+"Total weeds","B2","T4","Broccoli",3,1.59312218788424,0.531040729294746,2
+"Total weeds","B2","T4","Cover_crop",8,2.25341082618697,0.28517657711649,2
+"Total weeds","B3","T1","Cover_crop",5.25,2.07663528259241,0.408748019867042,4
+"Total weeds","B3","T2","Broccoli",6,2.62314703995621,0.445490724350154,2
+"Total weeds","B3","T2","Cover_crop",6.5,2.21894607835625,0.366020968149117,2
+"Total weeds","B3","T3","Broccoli",7.5,2.39498581464154,0.341716996027447,2
+"Total weeds","B3","T3","Cover_crop",5,2.80367196245639,0.560734392491278,2
+"Total weeds","B3","T4","Broccoli",6.5,3.32114531114259,0.520697906577422,2
+"Total weeds","B3","T4","Cover_crop",6.5,2.5801429714391,0.39738549765065,2
+"Total weeds","B4","T1","Cover_crop",5.5,2.75492752968952,0.510140408687001,4
+"Total weeds","B4","T2","Broccoli",8,3.66242527873979,0.495067952294463,2
+"Total weeds","B4","T2","Cover_crop",6,2.19500518755301,0.344803450486638,2
+"Total weeds","B4","T3","Broccoli",6.5,3.8106377961964,0.591362087087211,2
+"Total weeds","B4","T3","Cover_crop",6,2.3826257306489,0.397104288441484,2
+"Total weeds","B4","T4","Broccoli",4.5,1.36390443854372,0.307348582012072,2
+"Total weeds","B4","T4","Cover_crop",7.5,2.87766030350091,0.388254090415874,2
