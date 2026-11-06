@@ -272,6 +272,267 @@ show_table(category_treatments[c("Stratum", "Treatment", "Broad_category", "N_pl
   "Mean_quadrat_biomass_g", "Mean_biomass_g_m2", "SE_biomass_g_m2")])
 ```
 
+## Weed community composition at harvest
+
+Stacked bars show mean recorded weed biomass by species.
+Unknown weeds are included; Volunteer and Cover crop are excluded.
+Values represent biomass, not plant counts.
+
+```{r species-composition, fig.width=11, fig.height=7}
+# 1. Select weeds and retain the complete sampled-quadrat roster.
+sp_weeds <- clean[clean$Broad_category=="Weed", ]
+sp_codes <- sort(unique(sp_weeds$Species))
+
+sp_grid <- expand.grid(
+  Sample_ID=as.character(samples$Sample_ID),
+  Species=sp_codes,
+  stringsAsFactors=FALSE
+)
+
+sp_observed <- aggregate(
+  Biomass_g ~ Sample_ID + Species,
+  data=sp_weeds,
+  FUN=sum
+)
+
+sp_quadrats <- merge(
+  sp_grid, sp_observed,
+  by=c("Sample_ID", "Species"),
+  all.x=TRUE
+)
+
+# No taxon record in a sampled quadrat = zero recorded biomass.
+sp_quadrats$Biomass_g[is.na(sp_quadrats$Biomass_g)] <- 0
+
+sp_quadrats <- merge(
+  sp_quadrats,
+  samples[c("Sample_ID", "Block", "Treatment", "Stratum", "Area_m2")],
+  by="Sample_ID"
+)
+
+sp_quadrats$Biomass_g_m2 <-
+  sp_quadrats$Biomass_g / sp_quadrats$Area_m2
+
+stopifnot(
+  abs(sum(sp_quadrats$Biomass_g) -
+        sum(sp_weeds$Biomass_g)) < 1e-8
+)
+
+# 2. Average quadrats within plots, then average the four blocks.
+sp_plots <- aggregate(
+  Biomass_g_m2 ~ Block + Treatment + Stratum + Species,
+  data=sp_quadrats,
+  FUN=mean
+)
+
+sp_means <- aggregate(
+  Biomass_g_m2 ~ Treatment + Stratum + Species,
+  data=sp_plots,
+  FUN=mean
+)
+
+names(sp_means)[names(sp_means)=="Biomass_g_m2"] <-
+  "Mean_biomass_g_m2"
+
+# Export all taxa before combining smaller groups for display.
+write_csv(sp_quadrats, "Species_composition_quadrats.csv")
+write_csv(sp_plots, "Species_composition_plot_means.csv")
+write_csv(sp_means, "Species_composition_all_taxa.csv")
+
+# 3. Use the same main species and colors in both figures.
+# Select the top six codes in Cover_crop and top three in Broccoli.
+rank_species <- function(stratum, number) {
+  z <- sp_means[
+    sp_means$Stratum==stratum &
+      !grepl("^UNKNOWN", sp_means$Species),
+  ]
+
+  ranking <- aggregate(
+    Mean_biomass_g_m2 ~ Species,
+    data=z,
+    FUN=mean
+  )
+
+  ranking <- ranking[
+    order(-ranking$Mean_biomass_g_m2, ranking$Species),
+  ]
+
+  head(ranking$Species, number)
+}
+
+sp_keep <- union(
+  rank_species("Cover_crop", 6),
+  rank_species("Broccoli", 3)
+)
+
+sp_means$Display_group <- ifelse(
+  grepl("^UNKNOWN", sp_means$Species),
+  "Unknown weeds",
+  ifelse(
+    sp_means$Species %in% sp_keep,
+    sp_means$Species,
+    "Other weeds"
+  )
+)
+
+sp_display <- aggregate(
+  Mean_biomass_g_m2 ~ Treatment + Stratum + Display_group,
+  data=sp_means,
+  FUN=sum
+)
+
+sp_totals <- aggregate(
+  Mean_biomass_g_m2 ~ Treatment + Stratum,
+  data=sp_means,
+  FUN=sum
+)
+
+write_csv(sp_display, "Species_composition_display_groups.csv")
+write_csv(sp_totals, "Species_composition_total_weeds.csv")
+
+# 4. Define the legend.
+sp_levels <- c(sp_keep, "Unknown weeds", "Other weeds")
+sp_display$Display_group <- factor(
+  sp_display$Display_group,
+  levels=sp_levels
+)
+
+sp_colors <- c(
+  SETPU="#E76F61",
+  DIGIS="#55AEB3",
+  ARTVU="#B99535",
+  ECHCG="#7AA65A",
+  CHEAL="#6693CE",
+  MALNE="#AD83BA",
+  AMARE="#D96C9D",
+  "Unknown weeds"="#C4C4C4",
+  "Other weeds"="#666666"
+)
+
+# Keep any newly selected code visible if the dataset changes.
+extra_codes <- setdiff(sp_keep, names(sp_colors))
+if (length(extra_codes)) {
+  sp_colors <- c(
+    sp_colors,
+    setNames(
+      grDevices::hcl.colors(length(extra_codes), "Dark 3"),
+      extra_codes
+    )
+  )
+}
+
+# Common names correspond to the recorded EPPO codes.
+sp_names <- c(
+  SETPU="Yellow foxtail (SETPU)",
+  DIGIS="Smooth crabgrass (DIGIS)",
+  ARTVU="Common mugwort (ARTVU)",
+  ECHCG="Barnyard grass (ECHCG)",
+  CHEAL="Common lambsquarters (CHEAL)",
+  MALNE="Common mallow (MALNE)",
+  AMARE="Redroot pigweed (AMARE)"
+)
+
+sp_labels <- setNames(sp_levels, sp_levels)
+named_codes <- intersect(sp_keep, names(sp_names))
+sp_labels[named_codes] <- sp_names[named_codes]
+
+# 5. Draw one figure for each sampling area.
+make_species_plot <- function(stratum, subtitle) {
+  z <- sp_display[sp_display$Stratum==stratum, ]
+  totals <- sp_totals[sp_totals$Stratum==stratum, ]
+  z$Treatment <- droplevels(z$Treatment)
+
+  ggplot(
+    z,
+    aes(
+      x=Treatment,
+      y=Mean_biomass_g_m2,
+      fill=Display_group
+    )
+  ) +
+    geom_col(width=0.62) +
+    geom_text(
+      data=totals,
+      aes(
+        x=Treatment,
+        y=Mean_biomass_g_m2,
+        label=sprintf("%.1f", Mean_biomass_g_m2)
+      ),
+      inherit.aes=FALSE,
+      vjust=-0.5,
+      family="serif",
+      size=4
+    ) +
+    scale_fill_manual(
+      values=sp_colors,
+      breaks=sp_levels,
+      labels=sp_labels,
+      drop=FALSE
+    ) +
+    scale_y_continuous(
+      expand=expansion(mult=c(0, 0.12))
+    ) +
+    guides(fill=guide_legend(ncol=3, byrow=TRUE)) +
+    labs(
+      title="Weed species composition at broccoli harvest",
+      subtitle=subtitle,
+      x="Treatment",
+      y=expression(Mean~weed~biomass~(g~m^{-2})),
+      fill=NULL,
+      caption=paste(
+        "Means of four blocks; quadrats averaged within each plot.",
+        "Unknown weeds included; Volunteer and Cover crop excluded.",
+        sep="\n"
+      )
+    ) +
+    theme_classic(base_size=13, base_family="serif") +
+    theme(
+      axis.text=element_text(colour="black"),
+      legend.position="top",
+      legend.text=element_text(size=10),
+      plot.title=element_text(face="bold", hjust=0.5),
+      plot.subtitle=element_text(hjust=0.5),
+      plot.caption=element_text(hjust=0, size=10)
+    )
+}
+
+sp_cc_plot <- make_species_plot(
+  "Cover_crop",
+  "September 2026 | Cover-crop area and weedy control"
+)
+
+sp_broccoli_plot <- make_species_plot(
+  "Broccoli",
+  "September 2026 | Broccoli rows"
+)
+
+print(sp_cc_plot)
+print(sp_broccoli_plot)
+
+# 6. Save publication-resolution figures.
+graph_dir <- file.path(out, "Graph")
+dir.create(graph_dir, recursive=TRUE, showWarnings=FALSE)
+
+sp_figures <- list(
+  Weed_species_composition_T1_T4=sp_cc_plot,
+  Weed_species_composition_Broccoli_T2_T4=sp_broccoli_plot
+)
+
+for (nm in names(sp_figures)) {
+  ggsave(
+    file.path(graph_dir, paste0(nm, ".png")),
+    plot=sp_figures[[nm]],
+    width=11, height=7, dpi=300, bg="white"
+  )
+
+  ggsave(
+    file.path(graph_dir, paste0(nm, ".pdf")),
+    plot=sp_figures[[nm]],
+    width=11, height=7, bg="white"
+  )
+}
+```
+
 ## Primary mowing comparisons: T2–T4
 
 For each stratum and endpoint, the model is `index ~ Block + Treatment` with
@@ -399,30 +660,70 @@ show_table(primary$pairs)
 ```
 
 ```{r primary-figure, fig.height=7}
-#### T1 is needed in the graph for comparison
+# Include T1 in the cover-crop-area comparison.
+d <- plot_means[plot_means$Analysis=="Total weeds", ]
 
-d <- plot_means[plot_means$Analysis=="Total weeds" & plot_means$Treatment!="T1", ]
+# Cover_crop: T1-T4 model; Broccoli: T2-T4 model.
+em <- rbind(
+  secondary$emmeans,
+  primary$emmeans[primary$emmeans$Stratum=="Broccoli", ]
+)
+
+stratum_order <- c("Cover_crop", "Broccoli")
+d$Stratum <- factor(d$Stratum, levels=stratum_order)
+em$Stratum <- factor(em$Stratum, levels=stratum_order)
+
 long <- do.call(rbind, lapply(metrics, function(m) {
   z <- d[c("Block", "Treatment", "Stratum")]
-  z$Metric <- m; z$Value <- d[[m]]; z
+  z$Metric <- m
+  z$Value <- d[[m]]
+  z
 }))
-em <- primary$emmeans
+
+long$Metric <- factor(long$Metric, levels=metrics)
+em$Metric <- factor(em$Metric, levels=metrics)
+
 p <- ggplot(long, aes(x=Treatment, y=Value)) +
-  geom_point(aes(shape=Block), position=position_dodge(width=0.25),
-             size=2, colour="grey45") +
-  geom_errorbar(data=em, aes(x=Treatment, ymin=lower.CL, ymax=upper.CL),
-                inherit.aes=FALSE, width=0.12, linewidth=0.55) +
-  geom_point(data=em, aes(x=Treatment, y=emmean), inherit.aes=FALSE,
-             shape=18, size=3.5, colour="black") +
-  facet_wrap(~Stratum+Metric, ncol=3, scales="free_y") +
-  labs(x="Mowing treatment", y="Mean quadrat index",
-       caption="Small symbols: independent plot means. Diamonds: RCBD marginal means. Bars: pointwise 95% model CIs.") +
-  theme(legend.position="bottom", strip.text=element_text(size=9))
+  geom_point(
+    aes(shape=Block),
+    position=position_dodge(width=0.25),
+    size=2, colour="grey45"
+  ) +
+  geom_errorbar(
+    data=em,
+    aes(x=Treatment, ymin=lower.CL, ymax=upper.CL),
+    inherit.aes=FALSE, width=0.12, linewidth=0.55
+  ) +
+  geom_point(
+    data=em,
+    aes(x=Treatment, y=emmean),
+    inherit.aes=FALSE, shape=18, size=3.5
+  ) +
+  facet_wrap(~Stratum+Metric, ncol=3, scales="free") +
+  labs(
+    x="Treatment",
+    y="Mean quadrat index",
+    caption=paste(
+      "Small symbols: plot means. Diamonds: model means. Bars: 95% model CIs.",
+      "Cover_crop: T1-T4 model; Broccoli: T2-T4 model.",
+      sep="\n"
+    )
+  ) +
+  theme(
+    legend.position="bottom",
+    strip.text=element_text(size=9)
+  )
+
 print(p)
-ggsave(file.path(out, "Figures", "Primary_diversity.png"), p,
-       width=11, height=7, dpi=300)
-ggsave(file.path(out, "Figures", "Primary_diversity.pdf"), p,
-       width=11, height=7)
+
+ggsave(
+  file.path(out, "Figures", "Diversity_with_T1.png"),
+  p, width=11, height=7, dpi=300
+)
+ggsave(
+  file.path(out, "Figures", "Diversity_with_T1.pdf"),
+  p, width=11, height=7
+)
 ```
 
 ## Sensitivity to unidentified weed groups
