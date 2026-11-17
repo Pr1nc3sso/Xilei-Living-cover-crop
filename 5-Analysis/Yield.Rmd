@@ -192,8 +192,8 @@ if (any(table(dat$block, dat$treatment) == 0L)) {
 
 ```
 
-Marketable heads in the middle strip
-
+## Marketable heads in the middle strip
+```{r living-marketability-check}
 marketable_head <- function(grade, flag) {
   trimws(as.character(grade)) %in% c("3", "4", "5") &
     toupper(trimws(flag)) %in% "Y"
@@ -331,7 +331,7 @@ as continuous predictors.
 ## Response and experimental unit
 
 Each 4.0 m by 6.7 m living-mulch plot contained three planting strips.
-The middle strip represented r sprintf("%.2f", living_strip_area_m2) square
+The middle strip represented `r sprintf("%.2f", living_strip_area_m2)` square
 metres including interspaces. Marketable fresh mass from all harvests was
 summed within each plot and converted to kg/ha. Mean marketable head
 weight is expressed in grams per head.
@@ -339,7 +339,7 @@ weight is expressed in grams per head.
 The yield model compared T2, T3 and T4 across four randomized blocks.
 The adjacent plastic-mulched beds provided a descriptive reference.
 Two beds with four sections each represented
-r sprintf("%.2f", 8 * plastic_section_area_m2) square metres including
+`r sprintf("%.2f", 8 * plastic_section_area_m2)` square metres including
 interspaces. Weather and equipment problems led to different transplanting
 times in the two areas.
 With one response per plot, the treatment-by-block interaction cannot be
