@@ -8,807 +8,900 @@ output:
     toc_depth: 2
     number_sections: true
 params:
-  input_file: "2-Data/Raw/Vegetation survey - broccoli harvest.xlsx"
+  input_file: ""
   input_url: "https://raw.githubusercontent.com/Pr1nc3sso/Xilei-Living-cover-crop/master/2-Data/Raw/Vegetation%20survey%20-%20broccoli%20harvest.xlsx"
   output_dir: "Weed Community Diversity"
 ---
 
 ```{r packages-install, eval=FALSE, include=FALSE}
-# Run these commands in the R console if packages need to be installed.
-install.packages(c("readxl", "ggplot2", "emmeans", "knitr", "rmarkdown"))
-rmarkdown::render("Weed_Community_Diversity_2026.Rmd",
-  params = list(input_file = "2-Data/Raw/Vegetation survey - broccoli harvest.xlsx"))
+install.packages(c("readxl", "dplyr", "tidyr", "ggplot2", "emmeans", "knitr", "rmarkdown"))
 ```
 
 ```{r setup, include=FALSE}
-required <- c("readxl", "ggplot2", "emmeans", "knitr")
-missing <- required[!vapply(required, requireNamespace, logical(1), quietly=TRUE)]
-if (length(missing)) stop("Install these packages first: ", paste(missing, collapse=", "))
+library(dplyr)
+library(tidyr)
 library(ggplot2)
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE,
-                     fig.width=9, fig.height=5, dpi=150)
-theme_set(theme_bw(base_size=12))
+
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = TRUE,
+  fig.width = 9, fig.height = 5, dpi = 150
+)
+theme_set(theme_bw(base_size = 12))
+
 out <- params$output_dir
-dir.create(out, recursive=TRUE, showWarnings=FALSE)
-dir.create(file.path(out, "Figures"), showWarnings=FALSE)
+dir.create(file.path(out, "Figures"), recursive = TRUE, showWarnings = FALSE)
+
 write_csv <- function(x, name) {
-  write.csv(x, file.path(out, name), row.names=FALSE, na="")
+  write.csv(x, file.path(out, name), row.names = FALSE, na = "")
 }
-show_table <- function(x, digits=4) knitr::kable(x, digits=digits)
+
+show_table <- function(x, digits = 4) {
+  knitr::kable(x, digits = digits, row.names = FALSE)
+}
 ```
 
 ## Data
 
-```{r import-clean}
-input_path <- path.expand(params$input_file)
-absolute_path <- grepl("^(/|[A-Za-z]:[/\\\\]|\\\\\\\\)", input_path)
-if (absolute_path && !file.exists(input_path)) {
-  stop("The specified absolute input path does not exist: ", input_path)
-}
-search_dir <- normalizePath(getwd(), winslash="/", mustWork=TRUE)
-ancestors <- search_dir
-while (dirname(search_dir)!=search_dir) {
-  search_dir <- dirname(search_dir)
-  ancestors <- c(ancestors, search_dir)
-}
-candidates <- unique(c(input_path, file.path(ancestors, input_path)))
-existing <- candidates[file.exists(candidates) & !dir.exists(candidates)]
-if (length(existing)) {
-  input <- normalizePath(existing[1], winslash="/", mustWork=TRUE)
+```{r input-workbook}
+if (nzchar(params$input_file)) {
+  input <- normalizePath(path.expand(params$input_file), mustWork = TRUE)
   input_source <- input
 } else {
-  input <- tempfile(pattern="weed_biomass_", fileext=".xlsx")
-  status <- tryCatch(utils::download.file(params$input_url, input, mode="wb",
-    quiet=TRUE), error=function(e) stop("Unable to download the input workbook: ",
-    conditionMessage(e), "\nClone/download the project or set params$input_file."))
-  if (!identical(status, 0L) || !file.exists(input) || file.info(input)$size==0) {
-    stop("The GitHub workbook download did not complete successfully.")
-  }
+  input <- tempfile(fileext = ".xlsx")
   input_source <- params$input_url
+  status <- download.file(input_source, input, mode = "wb", quiet = TRUE)
+  stopifnot(status == 0L)
 }
-message("Reading weed data from: ", input_source)
+
 input_md5 <- unname(tools::md5sum(input))
-write_csv(data.frame(Input_source=input_source, MD5=input_md5), "Input_provenance.csv")
-raw <- as.data.frame(readxl::read_excel(input, sheet="2026", range=readxl::cell_cols("A:J"),
-  col_types=c("date", "numeric", "numeric", "numeric", "numeric",
-              "text", "text", "numeric", "numeric", "date")))
-names(raw) <- c("Collection_date", "Weeks_after_transplanting", "Block",
-  "Treatment", "Quadrat", "Location_original", "Species_original",
-  "Biomass_g", "Area_original_m2", "Weighing_date")
-raw$Excel_row <- seq_len(nrow(raw)) + 1L
-stopifnot(nrow(raw)>0L, all(is.finite(raw$Biomass_g)),
-          all(raw$Biomass_g>0), all(raw$Block %in% 1:4),
-          all(raw$Treatment %in% 1:4))
-raw$Collection_date <- as.Date(raw$Collection_date)
-raw$Weighing_date <- as.Date(raw$Weighing_date)
+write_csv(
+  data.frame(Input_source = input_source, MD5 = input_md5),
+  "Input_provenance.csv"
+)
+```
 
-# The updated source is already corrected. No observation is deleted here.
-clean <- raw
-excluded <- raw[FALSE, ]
-excluded$Reason <- character(0)
-write_csv(excluded, "Excluded_record.csv")
+```{r read-harvest-sheet}
+raw <- readxl::read_excel(
+  input, sheet = "2026", range = readxl::cell_cols("A:J"),
+  col_types = c("date", rep("numeric", 4), "text", "text", "numeric", "numeric", "date")
+)
 
-clean$Location <- ifelse(clean$Treatment==1, "Weedy check", clean$Location_original)
-stopifnot(all(clean$Location %in% c("Weedy check", "Cover crop", "Broccoli")))
-clean$Stratum <- ifelse(clean$Location=="Broccoli", "Broccoli", "Cover_crop")
-clean$Area_m2 <- clean$Area_original_m2
-expected_area <- ifelse(clean$Stratum=="Broccoli", 0.28, 0.16)
-if (any(!is.finite(clean$Area_m2)) || any(abs(clean$Area_m2-expected_area)>1e-8)) {
-  stop("Check quadrat areas in the input: Broccoli = 0.28 m2; other samples = 0.16 m2.")
+headers <- c(
+  "Biomass collection date", "Weeks after transplanting", "Block", "Treatment",
+  "Quadrat", "Relative location to Broccoli: in row or in cover crop", "Species",
+  "Biomass weight without bags, scale tared (gram)", "Quadrat size (m2)", "Weight date"
+)
+if (!identical(names(raw), headers)) {
+  stop("Harvest sheet headers differ from the expected A:J layout.")
 }
-clean$Cutting_height_cm <- ifelse(clean$Stratum=="Broccoli", 0, 8)
-clean$Species <- trimws(toupper(clean$Species_original))
-clean$Species[clean$Species=="UNKNOWNN MONOCOTS"] <- "UNKNOWN MONOCOTS"
-clean$Species[clean$Species=="UNKNOWNN DICOTS"] <- "UNKNOWN DICOTS"
-# Exactly three broad biological categories. Unidentified weeds remain Weed.
-# No cereal rye record is present; do not create one or add a taxon for it.
-cover_crop_labels <- c("TRFAL", "BERSEEM", "BERSEEM CLOVER", "CEREAL RYE", "SECALE CEREALE")
-clean$Broad_category <- ifelse(clean$Species=="CLOVER", "Volunteer",
-  ifelse(clean$Species %in% cover_crop_labels, "Cover crop", "Weed"))
-clean$Identification_status <- ifelse(grepl("^UNKNOWN", clean$Species),
-  "Unidentified weed group", ifelse(clean$Species=="CLOVER",
-    "Unresolved volunteer identity", "Recorded taxon code"))
-clean$Include_primary <- clean$Broad_category=="Weed"
-clean$Include_sensitivity <- clean$Broad_category=="Weed" &
-  clean$Identification_status=="Recorded taxon code"
-clean$Biomass_g_m2 <- clean$Biomass_g/clean$Area_m2
-clean$Sample_ID <- with(clean, paste0("B", Block, "_T", Treatment, "_",
-  Stratum, "_Q", Quadrat))
-clean$Block <- factor(clean$Block, levels=1:4, labels=paste0("B", 1:4))
-clean$Treatment <- factor(clean$Treatment, levels=1:4, labels=paste0("T", 1:4))
-stopifnot(nrow(clean)==nrow(raw),
-  !anyDuplicated(clean[c("Sample_ID", "Species")]))
 
-corrections <- clean[abs(clean$Area_m2-clean$Area_original_m2)>1e-8 |
-  clean$Location!=clean$Location_original | clean$Species!=clean$Species_original,
-  c("Excel_row", "Block", "Treatment", "Quadrat", "Location_original", "Location",
-    "Area_original_m2", "Area_m2", "Species_original", "Species")]
-write_csv(clean, "Cleaned_records.csv")
-write_csv(corrections, "Correction_log.csv")
-show_table(data.frame(Input_records=nrow(raw), Excluded_records=nrow(excluded),
-  Retained_records=nrow(clean), Samples=length(unique(clean$Sample_ID))))
+names(raw) <- c(
+  "Collection_date", "Weeks_after_transplanting", "Block", "Treatment",
+  "Quadrat", "Location_original", "Species_original",
+  "Biomass_g", "Area_original_m2", "Weighing_date"
+)
+
+records <- mutate(raw, Excel_row = row_number() + 1L)[rowSums(!is.na(raw)) > 0, ]
+
+stopifnot(
+  nrow(records) > 0,
+  all(is.finite(records$Biomass_g)), all(records$Biomass_g >= 0),
+  all(records$Block %in% 1:4), all(records$Treatment %in% 1:4),
+  all(records$Quadrat %in% 1:4)
+)
+
+if (anyDuplicated(select(records, -Excel_row))) {
+  stop("Check exact duplicates among the ten worksheet columns.")
+}
+
+excluded <- mutate(records[FALSE, ], Reason = character())
+write_csv(excluded, "Excluded_record.csv")
+```
+
+```{r sampling-protocol}
+field <- records %>%
+  mutate(
+    Collection_date = as.Date(Collection_date),
+    Weighing_date = as.Date(Weighing_date),
+    Block = factor(paste0("B", Block), levels = paste0("B", 1:4)),
+    Treatment = factor(paste0("T", Treatment), levels = paste0("T", 1:4)),
+    Location = if_else(Treatment == "T1", "Weedy check", trimws(Location_original)),
+    Stratum = if_else(Location == "Broccoli", "Broccoli", "Cover_crop"),
+    Area_m2 = if_else(Stratum == "Broccoli", 0.28, 0.16),
+    Cutting_height_cm = if_else(Stratum == "Broccoli", 0, 8),
+    Species = sub(
+      "^UNKNOWNN ", "UNKNOWN ",
+      toupper(trimws(gsub("[[:space:]]+", " ", Species_original)))
+    ),
+    Sample_ID = paste(Block, Treatment, Stratum, paste0("Q", Quadrat), sep = "_")
+  )
+
+stopifnot(
+  !anyNA(field$Collection_date), !anyNA(field$Species),
+  all(nzchar(field$Species)),
+  all(field$Location[field$Treatment != "T1"] %in% c("Broccoli", "Cover crop"))
+)
+```
+
+```{r combine-unknown-monocot-weighings}
+weighed <- mutate(field, Source_biomass_g = Biomass_g)
+
+target <- which(with(
+  weighed,
+  Collection_date == as.Date("2026-09-11") &
+    Sample_ID == "B4_T4_Cover_crop_Q2" &
+    Species == "UNKNOWN MONOCOTS"
+))
+
+portions <- c(0.07, 1.34)
+observed <- weighed$Source_biomass_g[target]
+
+if (length(observed) == 1L && any(near(observed, c(portions, sum(portions))))) {
+  weighed$Biomass_g[target] <- sum(portions)
+} else if (!(length(observed) == 2L && all(near(sort(observed), portions)))) {
+  stop("Check the two unknown-monocot weighings for B4 T4 interrow quadrat 2.")
+}
+
+write_csv(
+  select(
+    weighed[target, ], Excel_row, Sample_ID, Species, Collection_date,
+    Weighing_date, Source_biomass_g, Biomass_g
+  ),
+  "Split_weighing_audit.csv"
+)
 ```
 
 ### Biological categories and taxonomic uncertainty
 
-| Broad category | Included records | Use in weed analysis |
-|:--|:--|:--|
-| Volunteer | `CLOVER`, a previous-season volunteer | Excluded from every weed diversity analysis |
-| Weed | All recorded weeds, including every `UNKNOWN` group | Included in the primary Total weeds analysis |
-| Cover crop | Berseem clover (`TRFAL`) and cereal rye | Excluded from every weed diversity analysis |
+The primary analysis includes identified weed codes and unidentified groups so that all measured weed dry mass contributes to composition. The identified-code sensitivity analysis quantifies how the treatment results depend on those unresolved groups. Volunteer clover and sown cover crops are summarized separately.
 
-Total weeds includes the recorded weed codes and UNKNOWN groups. Its richness
-counts recorded categories, not confirmed species. The sensitivity analysis
-excludes UNKNOWN groups. Volunteer and Cover crop are excluded from both.
+```{r classify-records}
+sown <- c(
+  "TRFAL", "BERSEEM", "BERSEEM CLOVER", "TRIFOLIUM ALEXANDRINUM",
+  "RYE", "CEREAL RYE", "SECCE", "SECALE CEREALE"
+)
 
-```{r categories}
-category_summary <- aggregate(Biomass_g ~ Broad_category, clean, sum)
-category_summary$Records <- as.integer(table(clean$Broad_category)[category_summary$Broad_category])
-category_summary$Percent_of_recorded_mass <-
-  100*category_summary$Biomass_g/sum(category_summary$Biomass_g)
-stopifnot(all(category_summary$Broad_category %in%
-  c("Volunteer", "Weed", "Cover crop")))
+weed_codes <- c(
+  "AMARE", "ARTVU", "CAPBP", "CHEAL", "DIGIS", "DIGSA", "ECHCG",
+  "GASCI", "LACSE", "MALNE", "MEDLU", "OXASD", "OXAST", "PLANA",
+  "POLLA", "POLPE", "POROL", "SETSP", "SETPU", "SETVI", "TRFRE"
+)
+
+clean <- weighed %>%
+  mutate(
+    Broad_category = case_when(
+      Species %in% c("CLOVER", "VOLUNTEER CLOVER") ~ "Volunteer",
+      Species %in% sown ~ "Cover crop",
+      Species %in% weed_codes | grepl("^UNKNOWN($| )", Species) ~ "Weed",
+      TRUE ~ NA_character_
+    ),
+    Identification_status = case_when(
+      grepl("^UNKNOWN($| )", Species) ~ "Unidentified weed group",
+      Broad_category == "Volunteer" ~ "Unresolved volunteer identity",
+      TRUE ~ "Recorded taxon code"
+    ),
+    Include_primary = Broad_category == "Weed",
+    Include_sensitivity = Include_primary & Identification_status == "Recorded taxon code",
+    Biomass_g_m2 = Biomass_g / Area_m2
+  )
+
+if (anyNA(clean$Broad_category)) {
+  stop(
+    "Classify new species codes: ",
+    paste(unique(clean$Species[is.na(clean$Broad_category)]), collapse = ", ")
+  )
+}
+```
+
+```{r record-audits}
+corrections <- clean %>%
+  filter(
+    is.na(Area_original_m2) | abs(Area_m2 - Area_original_m2) > 1e-8 |
+      is.na(Location_original) | Location != Location_original |
+      Species != Species_original | abs(Biomass_g - Source_biomass_g) > 1e-8
+  ) %>%
+  select(
+    Excel_row, Block, Treatment, Quadrat, Location_original, Location,
+    Area_original_m2, Area_m2, Species_original, Species, Source_biomass_g, Biomass_g
+  )
+
+write_csv(clean, "Cleaned_records.csv")
+write_csv(corrections, "Correction_log.csv")
+
+show_table(data.frame(
+  Input_records = nrow(records),
+  Excluded_records = nrow(excluded),
+  Retained_records = nrow(clean),
+  Samples = n_distinct(clean$Sample_ID)
+))
+```
+
+```{r category-mass}
+category_summary <- clean %>%
+  group_by(Broad_category) %>%
+  summarise(Records = n(), Biomass_g = sum(Biomass_g), .groups = "drop") %>%
+  mutate(Percent_of_recorded_mass = 100 * Biomass_g / sum(Biomass_g))
+
 write_csv(category_summary, "Category_mass_summary.csv")
 show_table(category_summary)
 ```
 
 ## Quadrat-level indices and independent plot means
 
-For positive recorded masses in a quadrat, let \(p_i=b_i/\sum b_i\).
-Richness \(S\) counts positive taxon/category records after summing repeated
-records for the same label. Inverse Simpson diversity is
-\(D_2=1/\sum p_i^2\), and Simpson evenness is \(E=D_2/S\).
-The latter uses diversity divided by richness, not dominance divided by
-richness. If all included masses are zero, richness is 0 and diversity and
-evenness are undefined (`NA`). The supplied dataset is checked for this case.
+| Parameter | Why it was chosen for these harvest samples | Reference |
+|:--|:--|:--|
+| Dry biomass share, \(p_i=b_i/\sum b_i\) | A label's dry mass divided by the quadrat's included weed dry mass measures its contribution to standing biomass. The field measurements support weighting by dry mass. | Nguyen & Liebman (2022) |
+| Recorded richness, \(S\) | Counts positive-mass weed labels once per quadrat, giving a low-biomass label the same weight as a dominant one. This measures how many recorded categories persist under each mowing schedule. | Hill (1973), Nguyen & Liebman (2022) |
+| Inverse Simpson diversity, \(D_2=1/\sum p_i^2\) | Squaring biomass shares emphasizes dominant weeds. The reciprocal gives the effective number of equally abundant categories that would produce the observed concentration. | Hill (1973) |
+| Simpson evenness, \(E=D_2/S\) | Expresses effective diversity relative to the observed number of categories. It measures how evenly the mass is distributed and equals one when all positive-mass categories have equal shares. | Tuomisto (2012) |
 
-Each index is calculated separately within each quadrat, then averaged within
-each block × treatment × sampling stratum. Thus, every experimental plot
-contributes one independent observation per stratum. T1 has four quadrats and
-the other plot–stratum combinations have two. Pooling all T1 quadrats before
-counting taxa would inflate its sampling effort relative to the other groups;
-this analysis uses the mean quadrat index instead.
+With zero included weed mass, richness is zero and the other two indices are undefined. Each experimental plot contributes one mean per stratum (Hurlbert, 1984). Its richness mean uses every sampled quadrat. Its diversity and evenness means use quadrats with positive included mass.
 
-```{r indices}
-meta_cols <- c("Sample_ID", "Block", "Treatment", "Quadrat", "Location",
-               "Stratum", "Area_m2", "Cutting_height_cm", "Collection_date")
-samples <- unique(clean[meta_cols])
-stopifnot(nrow(samples)==64L, !anyDuplicated(samples$Sample_ID))
+```{r quadrat-roster}
+samples <- distinct(
+  clean, Sample_ID, Block, Treatment, Quadrat, Location, Stratum,
+  Area_m2, Cutting_height_cm, Collection_date
+)
+
+expected <- bind_rows(
+  expand_grid(
+    Block = paste0("B", 1:4), Treatment = "T1",
+    Stratum = "Cover_crop", Quadrat = 1:4
+  ),
+  expand_grid(
+    Block = paste0("B", 1:4), Treatment = paste0("T", 2:4),
+    Stratum = c("Broccoli", "Cover_crop"), Quadrat = 1:2
+  )
+)
+
+keys <- c("Block", "Treatment", "Stratum", "Quadrat")
+
+stopifnot(
+  !anyDuplicated(samples$Sample_ID),
+  nrow(anti_join(expected, samples, by = keys)) == 0L,
+  nrow(anti_join(samples, expected, by = keys)) == 0L
+)
+
 write_csv(samples, "Sample_metadata.csv")
-metrics <- c("Richness", "Inverse_Simpson", "Simpson_evenness")
+```
 
-# Complete categories only for the 64 sampled quadrats. A missing category
-# within one of these sampled quadrats has zero recorded category biomass.
-# This does not create a missing sample, a rye record, or a new taxon label.
-category_grid <- expand.grid(Sample_ID=as.character(samples$Sample_ID),
-  Broad_category=c("Volunteer", "Weed", "Cover crop"), stringsAsFactors=FALSE)
-observed_category_mass <- aggregate(Biomass_g ~ Sample_ID + Broad_category, clean, sum)
-category_quadrats <- merge(category_grid, observed_category_mass,
-  by=c("Sample_ID", "Broad_category"), all.x=TRUE, sort=TRUE)
-category_quadrats$Biomass_g[is.na(category_quadrats$Biomass_g)] <- 0
-category_quadrats <- merge(category_quadrats, samples, by="Sample_ID", sort=TRUE)
-category_quadrats$Biomass_g_m2 <- category_quadrats$Biomass_g/category_quadrats$Area_m2
-stopifnot(nrow(category_quadrats)==192L,
-  abs(sum(category_quadrats$Biomass_g)-sum(clean$Biomass_g))<1e-8,
-  identical(sort(unique(category_quadrats$Broad_category)),
-            sort(c("Volunteer", "Weed", "Cover crop"))))
-category_plot_keys <- c("Block", "Treatment", "Stratum", "Broad_category")
-category_plots <- aggregate(category_quadrats[c("Biomass_g", "Biomass_g_m2")],
-  category_quadrats[category_plot_keys], mean)
-category_n <- aggregate(category_quadrats["Sample_ID"],
-  category_quadrats[category_plot_keys], length)
-names(category_n)[names(category_n)=="Sample_ID"] <- "N_quadrats"
-category_plots <- merge(category_plots, category_n, by=category_plot_keys)
-names(category_plots)[names(category_plots)=="Biomass_g"] <- "Mean_quadrat_biomass_g"
-names(category_plots)[names(category_plots)=="Biomass_g_m2"] <- "Mean_biomass_g_m2"
-category_treatments <- do.call(rbind, lapply(split(category_plots,
-  interaction(category_plots$Treatment, category_plots$Stratum,
-              category_plots$Broad_category, drop=TRUE)), function(z) {
-  cbind(z[1, c("Treatment", "Stratum", "Broad_category")],
-    data.frame(N_plots=nrow(z),
-      Mean_quadrat_biomass_g=mean(z$Mean_quadrat_biomass_g),
-      SD_quadrat_biomass_g=sd(z$Mean_quadrat_biomass_g),
-      SE_quadrat_biomass_g=sd(z$Mean_quadrat_biomass_g)/sqrt(nrow(z)),
-      Mean_biomass_g_m2=mean(z$Mean_biomass_g_m2),
-      SD_biomass_g_m2=sd(z$Mean_biomass_g_m2),
-      SE_biomass_g_m2=sd(z$Mean_biomass_g_m2)/sqrt(nrow(z))))
-}))
-rownames(category_treatments) <- NULL
+```{r category-quadrats}
+observed_mass <- clean %>%
+  group_by(Sample_ID, Broad_category) %>%
+  summarise(Biomass_g = sum(Biomass_g), .groups = "drop")
+
+category_quadrats <- expand_grid(
+  Sample_ID = samples$Sample_ID,
+  Broad_category = c("Volunteer", "Weed", "Cover crop")
+) %>%
+  left_join(observed_mass, by = c("Sample_ID", "Broad_category")) %>%
+  left_join(samples, by = "Sample_ID") %>%
+  mutate(
+    Biomass_g = coalesce(Biomass_g, 0),
+    Biomass_g_m2 = Biomass_g / Area_m2
+  )
+
+stopifnot(
+  nrow(category_quadrats) == 192L,
+  near(sum(category_quadrats$Biomass_g), sum(clean$Biomass_g))
+)
+
 write_csv(category_quadrats, "Category_biomass_by_quadrat.csv")
+```
+
+```{r category-plot-means}
+category_plots <- category_quadrats %>%
+  group_by(Block, Treatment, Stratum, Broad_category) %>%
+  summarise(
+    N_quadrats = n(),
+    Mean_quadrat_biomass_g = mean(Biomass_g),
+    Mean_biomass_g_m2 = mean(Biomass_g_m2),
+    .groups = "drop"
+  )
+
+se <- function(x) sd(x) / sqrt(length(x))
+
+category_treatments <- category_plots %>%
+  group_by(Treatment, Stratum, Broad_category) %>%
+  summarise(
+    N_plots = n(),
+    SD_quadrat_biomass_g = sd(Mean_quadrat_biomass_g),
+    SE_quadrat_biomass_g = se(Mean_quadrat_biomass_g),
+    SD_biomass_g_m2 = sd(Mean_biomass_g_m2),
+    SE_biomass_g_m2 = se(Mean_biomass_g_m2),
+    Mean_quadrat_biomass_g = mean(Mean_quadrat_biomass_g),
+    Mean_biomass_g_m2 = mean(Mean_biomass_g_m2),
+    .groups = "drop"
+  )
+
 write_csv(category_plots, "Category_biomass_plot_means.csv")
 write_csv(category_treatments, "Category_biomass_treatment_summary.csv")
+```
 
-calculate_indices <- function(include_column, analysis_name) {
-  included <- clean[clean[[include_column]], ]
-  rows <- lapply(seq_len(nrow(samples)), function(j) {
-    id <- samples$Sample_ID[j]
-    z <- included[included$Sample_ID==id, ]
-    masses <- if (nrow(z)) tapply(z$Biomass_g, z$Species, sum) else numeric()
-    masses <- masses[is.finite(masses) & masses>0]
-    S <- length(masses)
-    D2 <- if (S) 1/sum((masses/sum(masses))^2) else NA_real_
-    all_mass <- sum(clean$Biomass_g[clean$Sample_ID==id])
-    total_weed_mass <- sum(clean$Biomass_g[clean$Sample_ID==id & clean$Broad_category=="Weed"])
-    cbind(samples[j, ], data.frame(Analysis=analysis_name,
-      Included_mass_g=sum(masses), Recorded_mass_g=all_mass,
-      Total_weed_mass_g=total_weed_mass,
-      Omitted_fraction_of_total_weed_mass=if (total_weed_mass>0)
-        1-sum(masses)/total_weed_mass else NA_real_, Richness=S,
-      Inverse_Simpson=D2, Simpson_evenness=if (S) D2/S else NA_real_))
-  })
-  do.call(rbind, rows)
+```{r weed-mass-by-code}
+weed_species_mass <- clean %>%
+  filter(Include_primary) %>%
+  group_by(Sample_ID, Species) %>%
+  summarise(Biomass_g = sum(Biomass_g), .groups = "drop")
+
+identified <- unique(clean$Species[clean$Include_sensitivity])
+
+sample_masses <- clean %>%
+  group_by(Sample_ID) %>%
+  summarise(
+    Recorded_mass_g = sum(Biomass_g),
+    Total_weed_mass_g = sum(Biomass_g[Include_primary]),
+    .groups = "drop"
+  )
+```
+
+```{r quadrat-indices}
+indices <- function(taxa, label) {
+  totals <- taxa %>%
+    filter(Biomass_g > 0) %>%
+    group_by(Sample_ID) %>%
+    summarise(
+      Included_mass_g = sum(Biomass_g),
+      Richness = n(),
+      Inverse_Simpson = 1 / sum((Biomass_g / sum(Biomass_g))^2),
+      .groups = "drop"
+    )
+
+  samples %>%
+    left_join(sample_masses, by = "Sample_ID") %>%
+    left_join(totals, by = "Sample_ID") %>%
+    mutate(
+      Analysis = label,
+      Richness = coalesce(Richness, 0L),
+      Included_mass_g = coalesce(Included_mass_g, 0),
+      Simpson_evenness = Inverse_Simpson / na_if(Richness, 0L),
+      Omitted_fraction_of_total_weed_mass =
+        1 - Included_mass_g / na_if(Total_weed_mass_g, 0)
+    )
 }
-quadrats <- rbind(calculate_indices("Include_primary", "Total weeds"),
-  calculate_indices("Include_sensitivity", "Identified weed codes"))
-if (any(quadrats$Richness==0)) {
-  stop("An empty included community was found. Review zero-sample handling before fitting models.")
-}
-stopifnot(all(quadrats$Inverse_Simpson>=1-1e-10),
-  all(quadrats$Inverse_Simpson<=quadrats$Richness+1e-10),
-  all(quadrats$Simpson_evenness<=1+1e-10))
-group_cols <- c("Analysis", "Block", "Treatment", "Stratum")
-plot_means <- aggregate(quadrats[metrics], quadrats[group_cols], mean)
-nq <- aggregate(quadrats["Sample_ID"], quadrats[group_cols], length)
-names(nq)[names(nq)=="Sample_ID"] <- "N_quadrats"
-plot_means <- merge(plot_means, nq, by=group_cols, sort=TRUE)
-stopifnot(nrow(plot_means)==56L)
+
+quadrats <- bind_rows(
+  indices(weed_species_mass, "Total weeds"),
+  indices(
+    filter(weed_species_mass, Species %in% identified),
+    "Identified weed codes"
+  )
+)
+
+stopifnot(
+  nrow(quadrats) == 128L,
+  all(is.na(quadrats$Inverse_Simpson) == (quadrats$Richness == 0L))
+)
+
 write_csv(quadrats, "Quadrat_indices.csv")
+```
+
+```{r plot-mean-indices}
+metrics <- c("Richness", "Inverse_Simpson", "Simpson_evenness")
+
+defined_mean <- function(x) {
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}
+
+plot_means <- quadrats %>%
+  group_by(Analysis, Block, Treatment, Stratum) %>%
+  summarise(
+    N_quadrats = n(),
+    N_defined_diversity = sum(!is.na(Inverse_Simpson)),
+    across(all_of(metrics), defined_mean),
+    .groups = "drop"
+  )
+
+stopifnot(
+  nrow(plot_means) == 56L,
+  all(plot_means$N_quadrats == ifelse(plot_means$Treatment == "T1", 4, 2))
+)
+
 write_csv(plot_means, "Plot_mean_indices.csv")
-show_table(plot_means[plot_means$Analysis=="Total weeds", ])
+show_table(filter(plot_means, Analysis == "Total weeds"))
 ```
 
 ## Biomass by broad category
 
-The table reports Volunteer, Weed and Cover crop separately. Weed includes
-all unidentified weed groups. A zero means no mass was recorded for that
-category in a sampled quadrat; it does not introduce a species record.
-Plot-level values are mean quadrat masses and mean mass per square metre,
-so T1's four quadrats do not receive twice the weight of two-quadrat plots.
-Treatment summaries use four independent plot means. Values from the two
-sampling strata remain separate because area and cutting height differ.
+A category absent from a sampled quadrat contributes zero recorded mass. Treatment summaries average quadrats within each plot, then give the four blocks equal weight. Broccoli rows and living-mulch strips are summarized separately.
 
 ```{r category-biomass-results}
-show_table(category_treatments[c("Stratum", "Treatment", "Broad_category", "N_plots",
-  "Mean_quadrat_biomass_g", "Mean_biomass_g_m2", "SE_biomass_g_m2")])
+show_table(select(
+  category_treatments, Stratum, Treatment, Broad_category, N_plots,
+  Mean_quadrat_biomass_g, Mean_biomass_g_m2, SE_biomass_g_m2
+))
 ```
 
 ## Weed community composition at harvest
 
-Stacked bars show mean recorded weed biomass by species.
-Unknown weeds are included; Volunteer and Cover crop are excluded.
-Values represent biomass, not plant counts.
+Stacked bars show the contribution of each weed group to mean dry biomass. The figures use the same colours and legend. The display cutoffs keep the legend readable. All recorded weed labels enter the primary indices. The six highest-biomass identified codes in the interrow and control comparison and the three highest in broccoli rows are labelled individually. Rankings give equal weight to each treatment within its sampling stratum. Remaining identified weeds and unidentified groups are shown separately.
 
-```{r species-composition, fig.width=11, fig.height=7}
-# 1. Select weeds and retain the complete sampled-quadrat roster.
-sp_weeds <- clean[clean$Broad_category=="Weed", ]
-sp_codes <- sort(unique(sp_weeds$Species))
-
-sp_grid <- expand.grid(
-  Sample_ID=as.character(samples$Sample_ID),
-  Species=sp_codes,
-  stringsAsFactors=FALSE
-)
-
-sp_observed <- aggregate(
-  Biomass_g ~ Sample_ID + Species,
-  data=sp_weeds,
-  FUN=sum
+```{r composition-quadrats}
+species_grid <- expand.grid(
+  Sample_ID = samples$Sample_ID,
+  Species = sort(unique(weed_species_mass$Species)),
+  stringsAsFactors = FALSE
 )
 
 sp_quadrats <- merge(
-  sp_grid, sp_observed,
-  by=c("Sample_ID", "Species"),
-  all.x=TRUE
+  species_grid, weed_species_mass,
+  by = c("Sample_ID", "Species"), all.x = TRUE
 )
-
-# No taxon record in a sampled quadrat = zero recorded biomass.
 sp_quadrats$Biomass_g[is.na(sp_quadrats$Biomass_g)] <- 0
 
 sp_quadrats <- merge(
   sp_quadrats,
   samples[c("Sample_ID", "Block", "Treatment", "Stratum", "Area_m2")],
-  by="Sample_ID"
+  by = "Sample_ID"
 )
+sp_quadrats$Biomass_g_m2 <- sp_quadrats$Biomass_g / sp_quadrats$Area_m2
 
-sp_quadrats$Biomass_g_m2 <-
-  sp_quadrats$Biomass_g / sp_quadrats$Area_m2
+stopifnot(isTRUE(all.equal(
+  sum(sp_quadrats$Biomass_g), sum(weed_species_mass$Biomass_g)
+)))
 
-stopifnot(
-  abs(sum(sp_quadrats$Biomass_g) -
-        sum(sp_weeds$Biomass_g)) < 1e-8
-)
+write_csv(sp_quadrats, "Species_composition_quadrats.csv")
+```
 
-# 2. Average quadrats within plots, then average the four blocks.
+```{r composition-plot-and-treatment-means}
 sp_plots <- aggregate(
   Biomass_g_m2 ~ Block + Treatment + Stratum + Species,
-  data=sp_quadrats,
-  FUN=mean
+  sp_quadrats, mean
 )
 
 sp_means <- aggregate(
   Biomass_g_m2 ~ Treatment + Stratum + Species,
-  data=sp_plots,
-  FUN=mean
+  sp_plots, mean
 )
+names(sp_means)[names(sp_means) == "Biomass_g_m2"] <- "Mean_biomass_g_m2"
 
-names(sp_means)[names(sp_means)=="Biomass_g_m2"] <-
-  "Mean_biomass_g_m2"
-
-# Export all taxa before combining smaller groups for display.
-write_csv(sp_quadrats, "Species_composition_quadrats.csv")
 write_csv(sp_plots, "Species_composition_plot_means.csv")
 write_csv(sp_means, "Species_composition_all_taxa.csv")
+```
 
-# 3. Use the same main species and colors in both figures.
-# Select the top six codes in Cover_crop and top three in Broccoli.
-rank_species <- function(stratum, number) {
-  z <- sp_means[
-    sp_means$Stratum==stratum &
-      !grepl("^UNKNOWN", sp_means$Species),
-  ]
-
-  ranking <- aggregate(
-    Mean_biomass_g_m2 ~ Species,
-    data=z,
-    FUN=mean
-  )
-
-  ranking <- ranking[
-    order(-ranking$Mean_biomass_g_m2, ranking$Species),
-  ]
-
-  head(ranking$Species, number)
+```{r composition-display-groups}
+rank_species <- function(stratum, n_keep) {
+  d <- subset(sp_means, Stratum == stratum & !grepl("^UNKNOWN", Species))
+  ranking <- aggregate(Mean_biomass_g_m2 ~ Species, d, mean)
+  index <- order(-ranking$Mean_biomass_g_m2, ranking$Species)
+  head(as.character(ranking$Species[index]), n_keep)
 }
 
-sp_keep <- union(
-  rank_species("Cover_crop", 6),
-  rank_species("Broccoli", 3)
-)
+sp_keep <- union(rank_species("Cover_crop", 6), rank_species("Broccoli", 3))
 
-sp_means$Display_group <- ifelse(
-  grepl("^UNKNOWN", sp_means$Species),
-  "Unknown weeds",
+sp_means$Display_group <- with(
+  sp_means,
   ifelse(
-    sp_means$Species %in% sp_keep,
-    sp_means$Species,
-    "Other weeds"
+    grepl("^UNKNOWN", Species), "Unknown weeds",
+    ifelse(Species %in% sp_keep, as.character(Species), "Other weeds")
   )
 )
 
 sp_display <- aggregate(
   Mean_biomass_g_m2 ~ Treatment + Stratum + Display_group,
-  data=sp_means,
-  FUN=sum
+  sp_means, sum
 )
-
 sp_totals <- aggregate(
   Mean_biomass_g_m2 ~ Treatment + Stratum,
-  data=sp_means,
-  FUN=sum
+  sp_means, sum
 )
 
 write_csv(sp_display, "Species_composition_display_groups.csv")
 write_csv(sp_totals, "Species_composition_total_weeds.csv")
+```
 
-# 4. Define the legend.
+```{r composition-legend}
 sp_levels <- c(sp_keep, "Unknown weeds", "Other weeds")
-sp_display$Display_group <- factor(
-  sp_display$Display_group,
-  levels=sp_levels
-)
+sp_display$Display_group <- factor(sp_display$Display_group, levels = sp_levels)
 
 sp_colors <- c(
-  SETPU="#E76F61",
-  DIGIS="#55AEB3",
-  ARTVU="#B99535",
-  ECHCG="#7AA65A",
-  CHEAL="#6693CE",
-  MALNE="#AD83BA",
-  AMARE="#D96C9D",
-  "Unknown weeds"="#C4C4C4",
-  "Other weeds"="#666666"
+  SETPU = "#E76F61", DIGIS = "#55AEB3", ARTVU = "#B99535",
+  ECHCG = "#7AA65A", CHEAL = "#6693CE", MALNE = "#AD83BA",
+  AMARE = "#D96C9D", "Unknown weeds" = "#C4C4C4", "Other weeds" = "#666666"
 )
 
-# Keep any newly selected code visible if the dataset changes.
-extra_codes <- setdiff(sp_keep, names(sp_colors))
-if (length(extra_codes)) {
+extra <- setdiff(sp_keep, names(sp_colors))
+if (length(extra)) {
   sp_colors <- c(
     sp_colors,
-    setNames(
-      grDevices::hcl.colors(length(extra_codes), "Dark 3"),
-      extra_codes
-    )
+    setNames(grDevices::hcl.colors(length(extra), "Dark 3"), extra)
   )
 }
 
-# Common names correspond to the recorded EPPO codes.
-sp_names <- c(
-  SETPU="Yellow foxtail (SETPU)",
-  DIGIS="Smooth crabgrass (DIGIS)",
-  ARTVU="Common mugwort (ARTVU)",
-  ECHCG="Barnyard grass (ECHCG)",
-  CHEAL="Common lambsquarters (CHEAL)",
-  MALNE="Common mallow (MALNE)",
-  AMARE="Redroot pigweed (AMARE)"
+common_names <- c(
+  SETPU = "Yellow foxtail", DIGIS = "Smooth crabgrass",
+  ARTVU = "Common mugwort", ECHCG = "Barnyard grass",
+  CHEAL = "Common lambsquarters", MALNE = "Common mallow",
+  AMARE = "Redroot pigweed"
 )
 
 sp_labels <- setNames(sp_levels, sp_levels)
-named_codes <- intersect(sp_keep, names(sp_names))
-sp_labels[named_codes] <- sp_names[named_codes]
+named <- intersect(sp_keep, names(common_names))
+sp_labels[named] <- sprintf("%s (%s)", common_names[named], named)
+```
 
-# 5. Draw one figure for each sampling area.
+```{r composition-plot-function}
 make_species_plot <- function(stratum, subtitle) {
-  z <- sp_display[sp_display$Stratum==stratum, ]
-  totals <- sp_totals[sp_totals$Stratum==stratum, ]
-  z$Treatment <- droplevels(z$Treatment)
+  d <- subset(sp_display, Stratum == stratum)
+  totals <- subset(sp_totals, Stratum == stratum)
 
-  ggplot(
-    z,
-    aes(
-      x=Treatment,
-      y=Mean_biomass_g_m2,
-      fill=Display_group
-    )
-  ) +
-    geom_col(width=0.62) +
+  ggplot(d, aes(Treatment, Mean_biomass_g_m2, fill = Display_group)) +
+    geom_col(width = 0.62) +
     geom_text(
-      data=totals,
-      aes(
-        x=Treatment,
-        y=Mean_biomass_g_m2,
-        label=sprintf("%.1f", Mean_biomass_g_m2)
-      ),
-      inherit.aes=FALSE,
-      vjust=-0.5,
-      family="serif",
-      size=4
+      data = totals, inherit.aes = FALSE,
+      aes(Treatment, Mean_biomass_g_m2, label = sprintf("%.1f", Mean_biomass_g_m2)),
+      vjust = -0.5, family = "serif", size = 4
     ) +
     scale_fill_manual(
-      values=sp_colors,
-      breaks=sp_levels,
-      labels=sp_labels,
-      drop=FALSE
+      values = sp_colors, limits = sp_levels, labels = sp_labels, drop = FALSE
     ) +
-    scale_y_continuous(
-      expand=expansion(mult=c(0, 0.12))
-    ) +
-    guides(fill=guide_legend(ncol=3, byrow=TRUE)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+    guides(fill = guide_legend(ncol = 3, byrow = TRUE)) +
     labs(
-      title="Weed species composition at broccoli harvest",
-      subtitle=subtitle,
-      x="Treatment",
-      y=expression(Mean~weed~biomass~(g~m^{-2})),
-      fill=NULL,
-      caption=paste(
-        "Means of four blocks; quadrats averaged within each plot.",
-        "Unknown weeds included; Volunteer and Cover crop excluded.",
-        sep="\n"
-      )
+      title = "Weed community composition at broccoli harvest",
+      subtitle = subtitle,
+      x = "Treatment",
+      y = expression(Mean~weed~dry~biomass~(g~m^{-2})),
+      fill = NULL,
+      caption = "Labels give total weed biomass. Bars show means of four plots."
     ) +
-    theme_classic(base_size=13, base_family="serif") +
+    theme_classic(base_size = 13, base_family = "serif") +
     theme(
-      axis.text=element_text(colour="black"),
-      legend.position="top",
-      legend.text=element_text(size=10),
-      plot.title=element_text(face="bold", hjust=0.5),
-      plot.subtitle=element_text(hjust=0.5),
-      plot.caption=element_text(hjust=0, size=10)
+      axis.text = element_text(colour = "black"),
+      legend.position = "top",
+      legend.text = element_text(size = 10),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5),
+      plot.caption = element_text(hjust = 0)
     )
 }
+```
 
+```{r composition-interrow-figure, fig.width=11, fig.height=7}
 sp_cc_plot <- make_species_plot(
-  "Cover_crop",
-  "September 2026 | Cover-crop area and weedy control"
+  "Cover_crop", "September 2026 | Living-mulch strips and weedy control"
 )
-
-sp_broccoli_plot <- make_species_plot(
-  "Broccoli",
-  "September 2026 | Broccoli rows"
-)
-
 print(sp_cc_plot)
-print(sp_broccoli_plot)
+```
 
-# 6. Save publication-resolution figures.
+```{r composition-broccoli-figure, fig.width=11, fig.height=7}
+sp_broccoli_plot <- make_species_plot(
+  "Broccoli", "September 2026 | Broccoli rows"
+)
+print(sp_broccoli_plot)
+```
+
+```{r export-composition-figures, include=FALSE}
 graph_dir <- file.path(out, "Graph")
-dir.create(graph_dir, recursive=TRUE, showWarnings=FALSE)
+dir.create(graph_dir, recursive = TRUE, showWarnings = FALSE)
 
 sp_figures <- list(
-  Weed_species_composition_T1_T4=sp_cc_plot,
-  Weed_species_composition_Broccoli_T2_T4=sp_broccoli_plot
+  Weed_species_composition_T1_T4 = sp_cc_plot,
+  Weed_species_composition_Broccoli_T2_T4 = sp_broccoli_plot
 )
 
 for (nm in names(sp_figures)) {
+  path <- file.path(graph_dir, nm)
   ggsave(
-    file.path(graph_dir, paste0(nm, ".png")),
-    plot=sp_figures[[nm]],
-    width=11, height=7, dpi=300, bg="white"
+    paste0(path, ".png"), sp_figures[[nm]],
+    width = 11, height = 7, dpi = 300, bg = "white"
   )
-
   ggsave(
-    file.path(graph_dir, paste0(nm, ".pdf")),
-    plot=sp_figures[[nm]],
-    width=11, height=7, bg="white"
+    paste0(path, ".pdf"), sp_figures[[nm]],
+    width = 11, height = 7, bg = "white"
   )
 }
 ```
 
-## Primary mowing comparisons: T2–T4
+## Mowing effects on weed diversity
 
-For each stratum and endpoint, the model is `index ~ Block + Treatment` with
-four fixed block effects and three treatment levels. Analysis is on the
-original index scale. With one plot per treatment in each block, treatment ×
-block interaction is not separately estimable. Quadrats are subsamples and
-are not treated as treatment replicates. The collection dates are associated
-with blocks (B1/B3 on September 9; B2/B4 on September 11), not repeated
-measurements of each plot, so a separate date effect is not estimated.
+The primary comparison uses the three planted mowing treatments. T2 was mown one week before transplanting and at weeks 3 and 6 afterward. T3 was mown one week before and at week 6 afterward. T4 was mown one week before transplanting. The secondary interrow comparison includes the unplanted weedy control (T1).
 
-The primary p value is an exact randomization test of the treatment F
-statistic, allowing all 3! treatment-label permutations independently within
-each block (\(6^4=1,296\) assignments). This tests the sharp no-treatment-effect
-null under the stated randomized design. Parametric F-test results are
-reported alongside it. Benjamini–Hochberg adjustment is applied jointly to
-the six primary exact p values (three endpoints × two strata). This is FDR
-control, not familywise error control. Model-based Tukey pairwise comparisons
-are supplementary and adjusted within each endpoint/stratum, not across the
-entire report.
+### Statistical choices and their rationale
 
-```{r test-functions}
-#### explain why each parameter was chosen and provide a reference for each
+| Choice | Rationale in this experiment | Reference |
+|:--|:--|:--|
+| Response and unit | The response is the mean quadrat index of a plot. Each of the four blocks contributes one plot per treatment. This gives each randomized plot equal weight, including T1 plots with four quadrats. | Hurlbert (1984) |
+| Sampling stratum | Intrarow and interrow samples differ in quadrat area and cutting height. Separate models compare treatments measured with the same protocol. | 2026 field sampling design |
+| Model | Fit each index on its original scale as `index ~ Block + Treatment`. The fixed block term accounts for differences among the four field blocks. One plot per block–treatment cell supports an additive model. Collection date is determined by block. | NIST, *Randomized block designs* |
+| Primary test statistic | The treatment F statistic compares between-treatment variation with residual variation after accounting for block. It tests for differences in any direction. | NIST, *Randomized block designs* |
+| Randomization and exact p value | Conditional on the T1 position, permute the three planted treatment labels only within their own block. Enumerate all \((3!)^4=1,296\) assignments. The exact p value is the fraction with F at least as large as observed under the sharp null of no plot-level treatment effect. | Anderson & ter Braak (2003) |
+| Multiple tests | Three indices in two strata give six primary tests. Report raw and Benjamini–Hochberg (BH) adjusted p values for this family. The identified-code sensitivity analysis and the three secondary tests each form a separate family. | Benjamini & Hochberg (1995) |
+| Means and contrasts | Equal block weights estimate mean treatment responses across the four blocks. Pointwise 95% intervals describe uncertainty in each mean. Tukey adjustment covers all pairwise contrasts within one index and stratum. | Lenth (2016), Tukey (1949) |
+| Diagnostics | Residual-versus-fitted plots assess spread. Normal Q–Q plots and Shapiro–Wilk W assess residual shape. Cook's distance flags influential plots for inspection. | Shapiro & Wilk (1965), Cook (1977) |
 
-permutations <- function(v) {
-  if (length(v)==1L) return(matrix(v, nrow=1L))
-  do.call(rbind, lapply(seq_along(v), function(i)
-    cbind(v[i], permutations(v[-i]))))
-}
-rcbd_f <- function(Y) {
-  b <- nrow(Y); k <- ncol(Y); grand <- mean(Y)
-  SST <- sum((Y-grand)^2)
-  SSB <- k*sum((rowMeans(Y)-grand)^2)
-  SSTrt <- b*sum((colMeans(Y)-grand)^2)
-  SSE <- max(0, SST-SSB-SSTrt)
-  (SSTrt/(k-1))/(SSE/((b-1)*(k-1)))
-}
-exact_rcbd <- function(Y) {
-  stopifnot(nrow(Y)==4L, ncol(Y)==3L, all(is.finite(Y)))
-  b <- nrow(Y); k <- ncol(Y)
-  P <- permutations(seq_len(k))
-  assignments <- as.matrix(expand.grid(rep(list(seq_len(nrow(P))), b)))
-  sums <- matrix(0, nrow(assignments), k)
-  for (i in seq_len(b)) {
-    candidate <- matrix(Y[i, ][P], nrow=nrow(P), ncol=k)
-    sums <- sums + candidate[assignments[, i], , drop=FALSE]
+```{r enumerate-assignments}
+orders <- rbind(
+  c(1, 2, 3), c(1, 3, 2), c(2, 1, 3),
+  c(2, 3, 1), c(3, 1, 2), c(3, 2, 1)
+)
+assignments <- as.matrix(expand.grid(rep(list(seq_len(nrow(orders))), 4)))
+stopifnot(nrow(assignments) == 1296L)
+```
+
+```{r exact-block-test}
+exact_rcbd <- function(y) {
+  stopifnot(identical(dim(y), c(4L, 3L)), all(is.finite(y)))
+
+  centered <- sweep(y, 1, rowMeans(y))
+  total_ss <- sum(centered^2)
+  if (total_ss == 0) {
+    stop("No within-block variation for the randomization test.")
   }
-  grand <- mean(Y)
-  fixed_ss <- sum((Y-grand)^2)-k*sum((rowMeans(Y)-grand)^2)
-  ss_trt <- b*rowSums((sums/b-grand)^2)
-  ss_error <- pmax(0, fixed_ss-ss_trt)
-  F_all <- (ss_trt/(k-1))/(ss_error/((b-1)*(k-1)))
-  observed <- rcbd_f(Y)
-  list(F=observed, p=mean(F_all>=observed-1e-10), assignments=length(F_all))
-}
 
-run_models <- function(analysis_name, include_control=FALSE) {
-  test_rows <- list(); emm_rows <- list(); pair_rows <- list(); diagnostic_rows <- list()
-  models <- list()
-  strata <- if (include_control) "Cover_crop" else c("Cover_crop", "Broccoli")
-  for (stratum in strata) for (metric in metrics) {
-    d <- plot_means[plot_means$Analysis==analysis_name & plot_means$Stratum==stratum, ]
-    if (!include_control) d <- d[d$Treatment!="T1", ]
-    d$Block <- factor(d$Block)
-    d$Treatment <- droplevels(factor(d$Treatment))
-    fit <- lm(reformulate(c("Block", "Treatment"), response=metric), data=d)
-    reduced <- lm(reformulate("Block", response=metric), data=d)
-    a <- anova(reduced, fit)
-    key <- paste(analysis_name, stratum, metric, sep="__")
-    models[[key]] <- fit
-    if (!include_control) {
-      Y <- as.matrix(xtabs(reformulate(c("Block", "Treatment"), response=metric), data=d))
-      exact <- exact_rcbd(Y)
-      stopifnot(abs(exact$F-a$F[2])<1e-7)
-    } else exact <- list(p=NA_real_, assignments=NA_integer_)
-    test_rows[[key]] <- data.frame(Analysis=analysis_name, Stratum=stratum,
-      Metric=metric, N_plots=nrow(d), F=a$F[2], df1=a$Df[2],
-      df2=df.residual(fit), Parametric_p=a$`Pr(>F)`[2],
-      Exact_p=exact$p, Permutations=exact$assignments)
-    em <- emmeans::emmeans(fit, ~Treatment)
-    emtab <- as.data.frame(summary(em, infer=c(TRUE, FALSE)))
-    emtab$Analysis <- analysis_name; emtab$Stratum <- stratum; emtab$Metric <- metric
-    emm_rows[[key]] <- emtab
-    pa <- as.data.frame(summary(pairs(em), infer=c(TRUE, TRUE), adjust="tukey"))
-    pa$Analysis <- analysis_name; pa$Stratum <- stratum; pa$Metric <- metric
-    pair_rows[[key]] <- pa
-    sh <- shapiro.test(residuals(fit))
-    diagnostic_rows[[key]] <- data.frame(Analysis=analysis_name, Stratum=stratum,
-      Metric=metric, Residual_SD=sigma(fit), Shapiro_W=unname(sh$statistic),
-      Shapiro_p=sh$p.value, Max_Cooks_distance=max(cooks.distance(fit)))
+  # Treatment SS and F have the same ordering when block totals are fixed.
+  observed <- sum(colSums(centered)^2) / nrow(y)
+  sums <- matrix(0, nrow(assignments), ncol(y))
+
+  for (b in seq_len(nrow(y))) {
+    permuted <- matrix(centered[b, ][orders], nrow = nrow(orders))
+    sums <- sums + permuted[assignments[, b], , drop = FALSE]
   }
-  tests <- do.call(rbind, test_rows); rownames(tests) <- NULL
-  tests$Exact_p_BH <- if (!include_control) p.adjust(tests$Exact_p, "BH") else NA_real_
+
+  permuted_ss <- rowSums(sums^2) / nrow(y)
+  tolerance <- 64 * .Machine$double.eps * total_ss
+  mean(permuted_ss >= observed - tolerance)
+}
+```
+
+```{r model-inputs}
+select_plots <- function(analysis, stratum, treatments) {
+  d <- plot_means[
+    plot_means$Analysis == analysis &
+      plot_means$Stratum == stratum &
+      plot_means$Treatment %in% treatments,
+  ]
+
+  d$Treatment <- factor(d$Treatment, levels = treatments)
+  d$Block <- factor(d$Block, levels = paste0("B", 1:4))
+
+  stopifnot(
+    !anyNA(d$Block),
+    all(table(d$Block, d$Treatment) == 1L)
+  )
+
+  d[order(d$Block, d$Treatment), ]
+}
+```
+
+```{r fit-one-index}
+fit_index <- function(d, metric, use_exact) {
+  if (any(!is.finite(d[[metric]]))) {
+    stop(
+      "A plot has an undefined ", metric, " in ", d$Stratum[1],
+      " (", d$Analysis[1], "). Inspect Plot_mean_indices.csv."
+    )
+  }
+
+  fit <- lm(
+    reformulate(c("Block", "Treatment"), metric),
+    data = d, na.action = na.fail
+  )
+  a <- anova(fit)
+  y <- matrix(d[[metric]], nrow = nlevels(d$Block), byrow = TRUE)
+  id <- data.frame(Analysis = d$Analysis[1], Stratum = d$Stratum[1], Metric = metric)
+
+  tests <- cbind(
+    id,
+    N_plots = nrow(d),
+    F = a["Treatment", "F value"],
+    df1 = a["Treatment", "Df"],
+    df2 = df.residual(fit),
+    Parametric_p = a["Treatment", "Pr(>F)"],
+    Exact_p = if (use_exact) exact_rcbd(y) else NA_real_,
+    Permutations = if (use_exact) nrow(assignments) else NA_integer_
+  )
+
+  em <- emmeans::emmeans(fit, ~ Treatment, weights = "equal")
+  means <- as.data.frame(confint(em, level = 0.95, adjust = "none"))
+  pairs_table <- as.data.frame(summary(
+    pairs(em), infer = c(TRUE, TRUE), level = 0.95, adjust = "tukey"
+  ))
+
+  sh <- shapiro.test(residuals(fit))
+  diagnostics <- cbind(
+    id,
+    Residual_SD = sigma(fit),
+    Shapiro_W = unname(sh$statistic),
+    Shapiro_p = sh$p.value,
+    Max_Cooks_distance = max(cooks.distance(fit))
+  )
+
+  list(
+    tests = tests,
+    emmeans = cbind(means, id[rep(1L, nrow(means)), , drop = FALSE]),
+    pairs = cbind(pairs_table, id[rep(1L, nrow(pairs_table)), , drop = FALSE]),
+    diagnostics = diagnostics,
+    model = fit
+  )
+}
+```
+
+```{r run-model-family}
+run_family <- function(analysis, strata, treatments, use_exact) {
+  fits <- list()
+
+  for (s in strata) {
+    d <- select_plots(analysis, s, treatments)
+    for (m in metrics) {
+      fits[[paste(s, m, sep = " / ")]] <- fit_index(d, m, use_exact)
+    }
+  }
+
+  collect <- function(field) {
+    x <- do.call(rbind, lapply(fits, "[[", field))
+    rownames(x) <- NULL
+    x
+  }
+
+  tests <- collect("tests")
+  tests$Exact_p_BH <- if (use_exact) p.adjust(tests$Exact_p, "BH") else NA_real_
   tests$Parametric_p_BH <- p.adjust(tests$Parametric_p, "BH")
-  list(tests=tests, emmeans=do.call(rbind, emm_rows),
-       pairs=do.call(rbind, pair_rows), diagnostics=do.call(rbind, diagnostic_rows),
-       models=models)
+
+  list(
+    tests = tests,
+    emmeans = collect("emmeans"),
+    pairs = collect("pairs"),
+    diagnostics = collect("diagnostics"),
+    models = lapply(fits, "[[", "model")
+  )
 }
-primary <- run_models("Total weeds")
-sensitivity <- run_models("Identified weed codes")
-secondary <- run_models("Total weeds", include_control=TRUE)
-write_csv(primary$tests, "Primary_T2_T4_tests.csv")
-write_csv(primary$emmeans, "Primary_T2_T4_emmeans.csv")
-write_csv(primary$pairs, "Primary_T2_T4_Tukey_pairs.csv")
-write_csv(primary$diagnostics, "Primary_model_diagnostics.csv")
-write_csv(sensitivity$tests, "Sensitivity_identified_codes_T2_T4_tests.csv")
-write_csv(sensitivity$emmeans, "Sensitivity_identified_codes_T2_T4_emmeans.csv")
-write_csv(sensitivity$pairs, "Sensitivity_identified_codes_T2_T4_Tukey_pairs.csv")
-write_csv(secondary$tests, "Secondary_T1_T4_Cover_crop_tests.csv")
-write_csv(secondary$emmeans, "Secondary_T1_T4_Cover_crop_emmeans.csv")
-write_csv(secondary$pairs, "Secondary_T1_T4_Cover_crop_Tukey_pairs.csv")
+```
+
+```{r primary-models}
+strata <- c("Cover_crop", "Broccoli")
+planted <- c("T2", "T3", "T4")
+
+primary <- run_family("Total weeds", strata, planted, TRUE)
 show_table(primary$tests)
 ```
 
-### Estimated means and pairwise comparisons
-
-These balanced-design marginal means equal the treatment averages of plot
-means. Confidence intervals for means are pointwise 95% intervals from the
-additive RCBD model. They are not constrained to the possible range of an
-index. Each treatment has four independent plots. A nonsignificant difference
-does not establish equivalent diversity.
-
-```{r primary-tables}
+```{r primary-means-and-contrasts}
 show_table(primary$emmeans)
 show_table(primary$pairs)
 ```
 
-```{r primary-figure, fig.height=7}
-# Include T1 in the cover-crop-area comparison.
-d <- plot_means[plot_means$Analysis=="Total weeds", ]
+### Sensitivity to unidentified weeds
 
-# Cover_crop: T1-T4 model; Broccoli: T2-T4 model.
-em <- rbind(
-  secondary$emmeans,
-  primary$emmeans[primary$emmeans$Stratum=="Broccoli", ]
-)
+The identified-code analysis repeats the six tests after removing unidentified weed groups. The quadrat table records the fraction of weed dry mass removed from each sample.
 
-stratum_order <- c("Cover_crop", "Broccoli")
-d$Stratum <- factor(d$Stratum, levels=stratum_order)
-em$Stratum <- factor(em$Stratum, levels=stratum_order)
-
-long <- do.call(rbind, lapply(metrics, function(m) {
-  z <- d[c("Block", "Treatment", "Stratum")]
-  z$Metric <- m
-  z$Value <- d[[m]]
-  z
-}))
-
-long$Metric <- factor(long$Metric, levels=metrics)
-em$Metric <- factor(em$Metric, levels=metrics)
-
-p <- ggplot(long, aes(x=Treatment, y=Value)) +
-  geom_point(
-    aes(shape=Block),
-    position=position_dodge(width=0.25),
-    size=2, colour="grey45"
-  ) +
-  geom_errorbar(
-    data=em,
-    aes(x=Treatment, ymin=lower.CL, ymax=upper.CL),
-    inherit.aes=FALSE, width=0.12, linewidth=0.55
-  ) +
-  geom_point(
-    data=em,
-    aes(x=Treatment, y=emmean),
-    inherit.aes=FALSE, shape=18, size=3.5
-  ) +
-  facet_wrap(~Stratum+Metric, ncol=3, scales="free") +
-  labs(
-    x="Treatment",
-    y="Mean quadrat index",
-    caption=paste(
-      "Small symbols: plot means. Diamonds: model means. Bars: 95% model CIs.",
-      "Cover_crop: T1-T4 model; Broccoli: T2-T4 model.",
-      sep="\n"
-    )
-  ) +
-  theme(
-    legend.position="bottom",
-    strip.text=element_text(size=9)
-  )
-
-print(p)
-
-ggsave(
-  file.path(out, "Figures", "Diversity_with_T1.png"),
-  p, width=11, height=7, dpi=300
-)
-ggsave(
-  file.path(out, "Figures", "Diversity_with_T1.pdf"),
-  p, width=11, height=7
-)
-```
-
-## Sensitivity to unidentified weed groups
-
-This table repeats the six mowing tests using only identified weed codes,
-excluding unknown groups. Volunteer and Cover crop remain excluded in both
-scenarios. BH correction is performed separately within these six sensitivity
-tests. The exported quadrat table gives the fraction of Total weeds biomass
-omitted from the identified-code scenario for every sample. In the primary
-Total weeds scenario this omitted fraction is zero.
-
-```{r sensitivity}
+```{r sensitivity-models}
+sensitivity <- run_family("Identified weed codes", strata, planted, TRUE)
 show_table(sensitivity$tests)
 ```
 
-## Secondary management-system comparison including T1
+### Secondary comparison with the weedy control
 
-This comparison uses only samples collected from 0.16 m² at the 8 cm cutting
-height. The response remains mean quadrat diversity. T1 has four subsamples
-per plot while T2–T4 have two, so plot-mean precision can differ by treatment.
-Parametric additive RCBD results are exploratory and depend on the model's
-variance assumptions. No exact randomization p value is claimed here.
-T1 differs in crop presence and soil/vegetation management as well as mowing,
-so this comparison cannot isolate a mowing effect. The three secondary
-parametric p values are BH-adjusted separately from the primary family.
+This exploratory comparison uses the 0.16 m² quadrats cut at 8 cm. Contrasts with T1 reflect planting and mowing together. T1 contributes four quadrats per plot and T2–T4 contribute two, so the precision of a plot mean can differ among treatments. This analysis reports the parametric treatment test.
 
-```{r secondary}
+```{r secondary-models}
+secondary <- run_family("Total weeds", "Cover_crop", paste0("T", 1:4), FALSE)
 show_table(secondary$tests)
 show_table(secondary$emmeans)
 show_table(secondary$pairs)
 ```
 
-## Model diagnostics and limitations
+```{r export-model-tables, include=FALSE}
+export_family <- function(x, prefix) {
+  write_csv(x$tests, paste0(prefix, "_tests.csv"))
+  write_csv(x$emmeans, paste0(prefix, "_emmeans.csv"))
+  write_csv(x$pairs, paste0(prefix, "_Tukey_pairs.csv"))
+}
 
-Inspect residual-versus-fitted plots and normal Q–Q plots before relying on
-parametric intervals or Tukey tests. A nonsignificant Shapiro–Wilk result with
-only 12 plot observations is not proof of normality. Primary randomization
-tests avoid a normal-error requirement but still require the stated
-randomization and the sharp-null interpretation.
+export_family(primary, "Primary_T2_T4")
+export_family(sensitivity, "Sensitivity_identified_codes_T2_T4")
+export_family(secondary, "Secondary_T1_T4_Cover_crop")
+write_csv(primary$diagnostics, "Primary_model_diagnostics.csv")
+```
 
-```{r diagnostics-table}
+## Diversity by treatment
+
+```{r diversity-figure-data}
+d <- subset(plot_means, Analysis == "Total weeds")
+
+long <- do.call(rbind, lapply(metrics, function(m) {
+  data.frame(
+    d[c("Block", "Treatment", "Stratum")],
+    Metric = m,
+    Value = d[[m]]
+  )
+}))
+
+em <- rbind(
+  secondary$emmeans,
+  subset(primary$emmeans, Stratum == "Broccoli")
+)
+
+metric_labels <- c("Richness", "Inverse Simpson", "Simpson evenness")
+long$Metric <- factor(long$Metric, levels = metrics, labels = metric_labels)
+em$Metric <- factor(em$Metric, levels = metrics, labels = metric_labels)
+
+stratum_labels <- c("Interrow and control", "Broccoli rows")
+long$Stratum <- factor(long$Stratum, levels = strata, labels = stratum_labels)
+em$Stratum <- factor(em$Stratum, levels = strata, labels = stratum_labels)
+```
+
+```{r diversity-figure, fig.width=11, fig.height=7}
+p <- ggplot(long, aes(Treatment, Value)) +
+  geom_point(
+    aes(shape = Block),
+    position = position_dodge(width = 0.25),
+    size = 2, colour = "grey45"
+  ) +
+  geom_errorbar(
+    data = em,
+    aes(x = Treatment, ymin = lower.CL, ymax = upper.CL),
+    inherit.aes = FALSE, width = 0.12
+  ) +
+  geom_point(
+    data = em, aes(Treatment, emmean),
+    inherit.aes = FALSE, shape = 18, size = 3.5
+  ) +
+  facet_wrap(~ Stratum + Metric, ncol = 3, scales = "free") +
+  labs(
+    x = "Treatment", y = "Mean quadrat index",
+    caption = paste(
+      "Small symbols show plot means.",
+      "Diamonds show adjusted means with pointwise 95% confidence intervals."
+    )
+  ) +
+  theme(legend.position = "bottom")
+
+print(p)
+```
+
+```{r save-diversity-figure, include=FALSE}
+base <- file.path(out, "Figures", "Diversity_with_T1")
+
+ggsave(paste0(base, ".png"), p, width = 11, height = 7, dpi = 300)
+ggsave(paste0(base, ".pdf"), p, width = 11, height = 7)
+```
+
+## Model diagnostics
+
+```{r diagnostic-table}
 show_table(primary$diagnostics)
 ```
 
-```{r diagnostics-plots, fig.width=8, fig.height=4, results='hide'}
-oldpar <- par(no.readonly=TRUE)
-for (key in names(primary$models)) {
-  fit <- primary$models[[key]]
-  par(mfrow=c(1,2), mar=c(4,4,3,1))
-  plot(fitted(fit), residuals(fit), xlab="Fitted", ylab="Residual",
-       main=gsub("__", " / ", key), pch=19, cex.main=0.65)
-  abline(h=0, lty=2)
-  qqnorm(residuals(fit), main="Residual normal Q-Q", pch=19)
+```{r diagnostic-figures, fig.width=8, fig.height=4}
+plot_diagnostics <- function(fit, title) {
+  old <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+  on.exit(par(old))
+
+  plot(
+    fitted(fit), residuals(fit),
+    xlab = "Fitted value", ylab = "Residual",
+    main = title, pch = 19, cex.main = 0.85
+  )
+  abline(h = 0, lty = 2)
+
+  qqnorm(residuals(fit), main = "Residual normal Q–Q", pch = 19)
   qqline(residuals(fit))
 }
-par(oldpar)
+
+for (name in names(primary$models)) {
+  plot_diagnostics(primary$models[[name]], name)
+}
 ```
 
-- The input records biomass in grams but does not explicitly identify it as
-  fresh or dry mass in its column heading. Report it as recorded biomass
-  until the weighing protocol is confirmed.
-- No individual counts are present. Density-based diversity, count-based
-  rarefaction and Fisher's alpha are therefore not computed.
-- Unknown weed groups prevent a definitive weed species-richness estimate.
-  Total weeds richness counts recorded operational weed categories;
-  Identified weed codes is a sensitivity subset. Volunteer clover is excluded
-  from both and summarized separately as Volunteer biomass.
-- Differences between broccoli-row and cover-crop-area indices are not tested
-  as if sampling were equivalent: both area and clipping height differ.
-- Plastic mulch is an adjacent production benchmark, and no corresponding
-  species-level weed table is supplied. It is not added as a randomized fifth
-  diversity treatment.
-- Only this collection is analyzed. Dates assigned to different blocks do
-  not establish a seasonal trajectory or two independent sampling rounds.
+Inference concerns the 2026 harvest and the randomized plots. The adjacent plastic-mulched beds serve as a production benchmark outside the diversity analysis.
 
-## References and reproducibility
+## References
 
-1. Example analysis: <https://github.com/hnguyen19/Weed-community/blob/master/5-Analysis/Community.Rmd>
-2. Example methods, defining inverse Simpson and Simpson evenness:
-   <https://github.com/hnguyen19/Weed-community/blob/master/6-Draft/MandM.Rmd>
-3. vegan diversity definitions and limitations:
-   <https://vegandevs.github.io/vegan/reference/diversity.html>
-4. emmeans pairwise comparisons and Tukey adjustment:
-   <https://rvlenth.github.io/emmeans/articles/comparisons.html>
+- Nguyen, H. T. X., & Liebman, M. (2022). Weed community composition in simple and more diverse cropping systems. *Frontiers in Agronomy*. <https://doi.org/10.3389/fagro.2022.848548>
+- Hill, M. O. (1973). Diversity and evenness: A unifying notation and its consequences. *Ecology*. <https://doi.org/10.2307/1934352>
+- Tuomisto, H. (2012). An updated consumer's guide to evenness and related indices. *Oikos*. <https://doi.org/10.1111/j.1600-0706.2011.19897.x>
+- Hurlbert, S. H. (1984). Pseudoreplication and the design of ecological field experiments. *Ecological Monographs*. <https://doi.org/10.2307/1942661>
+- NIST/SEMATECH. *e-Handbook of Statistical Methods*, §5.3.3.2, Randomized block designs. <https://www.itl.nist.gov/div898/handbook/pri/section3/pri332.htm>
+- Anderson, M. J., & ter Braak, C. J. F. (2003). Permutation tests for multi-factorial analysis of variance. *Journal of Statistical Computation and Simulation*. <https://doi.org/10.1080/00949650215733>
+- Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate: A practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society, Series B*. <https://doi.org/10.1111/j.2517-6161.1995.tb02031.x>
+- Lenth, R. V. (2016). Least-squares means: The R package lsmeans. *Journal of Statistical Software*. <https://doi.org/10.18637/jss.v069.i01>
+- Tukey, J. W. (1949). Comparing individual means in the analysis of variance. *Biometrics*. <https://doi.org/10.2307/3001913>
+- Shapiro, S. S., & Wilk, M. B. (1965). An analysis of variance test for normality (complete samples). *Biometrika*. <https://doi.org/10.1093/biomet/52.3-4.591>
+- Cook, R. D. (1977). Detection of influential observation in linear regression. *Technometrics*. <https://doi.org/10.1080/00401706.1977.10489493>
 
-```{r session-info, include=FALSE}
-capture.output(sessionInfo(), file=file.path(out, "R_sessionInfo.txt"))
+Project analysis examples: [Community analysis](https://github.com/hnguyen19/Weed-community/blob/master/5-Analysis/Community.Rmd) and [methods](https://github.com/hnguyen19/Weed-community/blob/master/6-Draft/MandM.Rmd).
+
+```{r session-information, include=FALSE}
+capture.output(sessionInfo(), file = file.path(out, "R_sessionInfo.txt"))
 ```
