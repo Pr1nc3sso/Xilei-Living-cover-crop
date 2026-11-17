@@ -704,6 +704,7 @@ caption = paste(
 
 print(p)
 ```
+
 ## Model diagnostics
 
 Inspect residual spread and the normal Q-Q plot before interpreting the
