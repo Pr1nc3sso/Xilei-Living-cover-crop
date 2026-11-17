@@ -1,5 +1,5 @@
 ---
-title: "Broccoli Yield: Randomized Complete Block Analysis"
+title: "Marketable Broccoli Yield by Mowing Treatment"
 output:
   bookdown::pdf_document2:
     keep_tex: true
@@ -23,6 +23,11 @@ library(dplyr)
 library(ggplot2)
 library(emmeans)
 
+```
+
+## Download the source workbook
+
+```{r download-data}
 # Download the workbook from GitHub.
 # The source folder is 2-Data/Raw/.
 github_base <- paste0(
@@ -62,6 +67,11 @@ dir.create(
   showWarnings = FALSE
 )
 
+```
+
+## Read living-mulch records
+
+```{r living-read}
 # Read the first nine columns.
 raw <- read_excel(
   file_path,
@@ -84,6 +94,18 @@ names(raw) <- c(
 
 raw$excel_row <- seq_len(nrow(raw)) + 1L
 
+knitr::kable(
+  data.frame(
+    Sheet = "living mulch",
+    Imported_rows = nrow(raw)
+  ),
+  row.names = FALSE
+)
+```
+
+## Clean living-mulch records
+
+```{r living-clean}
 dat <- raw %>%
   mutate(
     across(
@@ -115,8 +137,20 @@ if (
   stop("Unexpected treatment or row labels.")
 }
 
+living_clean <- dat
+
+knitr::kable(
+  living_clean %>%
+    count(treatment, row_position, name = "Heads"),
+  caption = "Living-mulch records before middle-row selection"
+)
+```
+
+## Select living-mulch middle-row heads
+
+```{r living-select}
 # Only middle-row heads enter the yield analysis.
-dat <- dat %>%
+dat <- living_clean %>%
   filter(
     treatment %in% c("T2", "T3", "T4"),
     row_position %in% c(
@@ -148,7 +182,7 @@ dat <- dat %>%
     ),
     treatment = factor(
       treatment,
-      levels = c("T4", "T3", "T2")
+ levels = c("T2", "T3", "T4")
     )
   )
 
@@ -156,36 +190,88 @@ if (any(table(dat$block, dat$treatment) == 0L)) {
   stop("A plot has no harvest records; do not assume zero yield.")
 }
 
-# Enter the TOTAL area of one experimental plot, in square metres.
-# This single value assumes all 12 experimental plots have equal areas.
-# Do not use the biomass quadrat area.
-plot_area_m2 <- 4 * 6.46
+```
 
-if (!is.finite(plot_area_m2) || plot_area_m2 <= 0) {
-  stop(
-    "Enter the confirmed total experimental plot area in plot_area_m2."
-  )
+Marketable heads in the middle strip
+
+marketable_head <- function(grade, flag) {
+  trimws(as.character(grade)) %in% c("3", "4", "5") &
+    toupper(trimws(flag)) %in% "Y"
 }
 
-# Pool all harvest dates within each experimental plot.
-plot_data <- dat %>%
-  group_by(block, treatment) %>%
-  summarise(
-    yield_kg = sum(fresh_weight_g) / 1000,
-    heads = n(),
-    mean_head_g = mean(fresh_weight_g),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    harvest_area_m2 = plot_area_m2 / 3,
-    yield_t_ha = yield_kg / harvest_area_m2 * 10
-  )
+living_heads <- dat %>%
+  mutate(in_yield = marketable_head(grade, marketable))
+
+knitr::kable(
+  living_heads %>%
+    group_by(treatment) %>%
+    summarise(weighed = n(), marketable = sum(in_yield), .groups = "drop"),
+  caption = "Middle-strip head counts by treatment"
+)
+```
+
+## Check the living-mulch harvest area
+
+```{r living-area}
+plot_length_m <- 4.0
+plot_width_m <- 6.7
+plot_area_m2 <- plot_length_m * plot_width_m
+living_strip_area_m2 <- plot_area_m2 / 3
+plastic_section_area_m2 <- 2 * plot_area_m2 / 3
+
+knitr::kable(
+  data.frame(
+    Area = c(
+      "Whole experimental plot",
+      "Harvested middle band"
+    ),
+    Area_m2 = c(
+      plot_area_m2,
+    living_strip_area_m2
+    )
+  ),
+  digits = 3,
+  row.names = FALSE,
+  caption = "Living-mulch area used in the calculation"
+)
+```
+
+## Calculate living-mulch yield
+
+```{r living-yield}
+plot_data <- living_heads %>%
+group_by(block, treatment) %>%
+summarise(
+yield_kg = sum(fresh_weight_g[in_yield]) / 1000,
+heads = sum(in_yield),
+.groups = "drop"
+) %>%
+mutate(
+mean_head_g = if_else(heads > 0, yield_kg * 1000 / heads, NA_real_),
+harvest_area_m2 = living_strip_area_m2,
+yield_kg_ha = yield_kg / harvest_area_m2 * 10000
+)
 
 stopifnot(nrow(plot_data) == 12L)
 
+knitr::kable(
+  plot_data,
+  digits = 3,
+  row.names = FALSE,
+  col.names = c(
+    "Block", "Treatment", "kg", "Heads",
+"g/head", "Area (m2)", "kg/ha"
+  ),
+caption = "Marketable head mass, head count, mean head weight and yield by plot"
+)
+```
+
+## Fit the living-mulch yield model
+
+```{r yield-model}
 # Fit the model using yield per unit area.
 fit <- lm(
-  yield_t_ha ~ treatment + block,
+yield_kg_ha ~ treatment + block,
   data = plot_data
 )
 
@@ -244,27 +330,18 @@ as continuous predictors.
 
 ## Response and experimental unit
 
-The response is total harvested fresh yield in tonnes per hectare,
-pooled over all recorded harvest dates. All weighed heads are included;
-this is not marketable yield.
+Each 4.0 m by 6.7 m living-mulch plot contained three planting strips.
+The middle strip represented r sprintf("%.2f", living_strip_area_m2) square
+metres including interspaces. Marketable fresh mass from all harvests was
+summed within each plot and converted to kg/ha. Mean marketable head
+weight is expressed in grams per head.
 
-Each experimental plot has an area of `r plot_area_m2` square metres.
-The effective harvested middle-row area is one-third of this area,
-or `r plot_area_m2 / 3` square metres.
-
-Yield in t/ha is calculated as harvested fresh weight in kg divided
-by the effective harvested area in square metres, multiplied by 10.
-
-The randomized analysis includes three mowing treatments and four blocks.
-Each block-by-treatment plot is one replicate; outer rows are excluded.
-
-The plastic-mulch sheet is used for a descriptive yield reference only.
-Each of its four sections contains independent East and West beds.
-Each 4-m bed section has the same ground area as the harvested living-mulch
-middle band: `r plot_area_m2 / 3` square metres. All harvest dates and both
-beds are pooled, giving a total reference area of
-`r 4 * 2 * plot_area_m2 / 3` square metres.
-Plastic-mulch records are excluded from the ANOVA and Tukey comparisons.
+The yield model compared T2, T3 and T4 across four randomized blocks.
+The adjacent plastic-mulched beds provided a descriptive reference.
+Two beds with four sections each represented
+r sprintf("%.2f", 8 * plastic_section_area_m2) square metres including
+interspaces. Weather and equipment problems led to different transplanting
+times in the two areas.
 With one response per plot, the treatment-by-block interaction cannot be
 estimated separately from residual error. The model assumes additive
 treatment and block effects.
@@ -278,9 +355,9 @@ plot_display <- data.frame(
     "%.2f",
     plot_data$harvest_area_m2
   ),
-  Yield_t_ha = sprintf(
-    "%.2f",
-    plot_data$yield_t_ha
+Yield_kg_ha = sprintf(
+"%.2f",
+plot_data$yield_kg_ha
   )
 )
 
@@ -304,7 +381,7 @@ format_p <- function(x) {
     ifelse(
       x < 0.001,
       "<0.001",
-      sprintf("%.3f", x)
+  sprintf("%.4f", x)
     )
   )
 }
@@ -327,13 +404,13 @@ anova_display <- data.frame(
 knitr::kable(
   anova_display,
   row.names = FALSE,
-  caption = "ANOVA of harvested fresh yield (t/ha)"
+caption = "ANOVA of marketable broccoli yield (kg/ha)"
 )
 ```
 
 ## Adjusted treatment means
 
-Means are adjusted for block and expressed in t/ha.
+Means are adjusted for block and expressed in kg/ha.
 The table reports each estimated marginal mean, its model-based SE,
 and its individual 95% confidence interval.
 The figure shows means with error bars of one SE.
@@ -351,7 +428,7 @@ emm_display <- data.frame(
 knitr::kable(
   emm_display,
   row.names = FALSE,
-  caption = "Adjusted yield means, SEs and 95% CIs (t/ha)"
+caption = "Adjusted yield means, SEs and 95% CIs (kg/ha)"
 )
 ```
 
@@ -362,7 +439,7 @@ Tukey adjustment was therefore used to control the family-wise
 Type I error rate across these comparisons. Comparisons are based
 on estimated marginal means adjusted for block.
 
-Differences, SEs and confidence limits are expressed in t/ha.
+Differences, SEs and confidence limits are expressed in kg/ha.
 The confidence intervals and p-values below are Tukey-adjusted.
 
 ```{r tukey}
@@ -383,24 +460,38 @@ knitr::kable(
 )
 ```
 
-## Yield figure
+## Plastic-mulch reference
 
-Negative weeks on the horizontal axis indicate mowing before transplanting.
-Positive weeks indicate mowing after transplanting.
+### Check the plastic-mulch area
 
-```{r yield-figure}
-#### information to add: living mulch plot size, explanation of the difference in transplanting timing between the living mulch area and plastic mulch due to weather adversity and equipment complication, per crown weight
+```{r plastic-area}
+plastic_bed_area_m2 <- plastic_section_area_m2
 
-# East and West are independent beds.
-# Each 4-m bed section has the same ground area as the
-# harvested middle band in living mulch.
-plastic_bed_area_m2 <- plot_area_m2 / 3
+knitr::kable(
+  data.frame(
+    Area = c(
+      "One bed section",
+      "Four sections, two beds each"
+    ),
+    Area_m2 = c(
+      plastic_bed_area_m2,
+      8 * plastic_bed_area_m2
+    )
+  ),
+  digits = 3,
+  row.names = FALSE,
+  caption = "Plastic-mulch area used in the calculation"
+)
+```
 
+### Read plastic-mulch records
+
+```{r plastic-read}
 plastic_raw <- read_excel(
   file_path,
   sheet = "plastic mulch",
   range = cell_cols("A:H"),
-  col_types = "text"
+col_types = c("date", rep("text", 7))
 )
 
 names(plastic_raw) <- c(
@@ -408,9 +499,21 @@ names(plastic_raw) <- c(
   "grade", "appearance_note", "hollow_core", "marketable"
 )
 
+knitr::kable(
+  data.frame(
+    Sheet = "plastic mulch",
+    Imported_rows = nrow(plastic_raw)
+  ),
+  row.names = FALSE
+)
+```
+
+### Clean plastic-mulch records
+
+```{r plastic-clean}
 plastic_dat <- plastic_raw %>%
   mutate(
-    across(everything(), ~ na_if(trimws(.x), ""))
+across(where(is.character), ~ na_if(trimws(.x), ""))
   ) %>%
   filter(
     if_any(
@@ -439,19 +542,46 @@ if (
   stop("Check section, row and fresh-weight entries in the plastic mulch sheet.")
 }
 
-# Pool all harvest dates and all weighed heads.
-# Include nonmarketable heads to match the living-mulch response.
-plastic_bed_data <- plastic_dat %>%
-  group_by(section, row_position) %>%
-  summarise(
-    heads = n(),
-    yield_kg = sum(fresh_weight_g) / 1000,
-    .groups = "drop"
-  ) %>%
-  mutate(
-    harvest_area_m2 = plastic_bed_area_m2,
-    yield_t_ha = yield_kg / harvest_area_m2 * 10
-  )
+plastic_dat <- plastic_dat %>%
+mutate(
+harvest_date = as.Date(harvest_date),
+marketable = toupper(marketable)
+)
+
+confirmed_head <- with(plastic_dat, which(
+harvest_date == as.Date("2026-10-22") & section == "2" &
+row_position == "WEST" & fresh_weight_g == 241 & grade == "3"
+))
+stopifnot(length(confirmed_head) <= 1L)
+if (length(confirmed_head) == 1L && is.na(plastic_dat$marketable[confirmed_head])) {
+plastic_dat$marketable[confirmed_head] <- "Y"
+}
+
+plastic_heads <- plastic_dat %>%
+mutate(in_yield = marketable_head(grade, marketable))
+
+knitr::kable(
+plastic_heads %>%
+summarise(weighed = n(), marketable = sum(in_yield)),
+caption = "Plastic-mulch head counts"
+)
+```
+
+### Calculate plastic-mulch yield
+
+```{r plastic-yield}
+plastic_bed_data <- plastic_heads %>%
+group_by(section, row_position) %>%
+summarise(
+heads = sum(in_yield),
+yield_kg = sum(fresh_weight_g[in_yield]) / 1000,
+.groups = "drop"
+) %>%
+mutate(
+mean_head_g = if_else(heads > 0, yield_kg * 1000 / heads, NA_real_),
+harvest_area_m2 = plastic_bed_area_m2,
+yield_kg_ha = yield_kg / harvest_area_m2 * 10000
+)
 
 if (
   nrow(plastic_bed_data) != 8L ||
@@ -465,6 +595,17 @@ if (
   stop("Expected East and West records for each of the four plastic sections.")
 }
 
+knitr::kable(
+  plastic_bed_data,
+  digits = 3,
+  row.names = FALSE,
+caption = "Marketable yield and mean head weight by bed section"
+)
+```
+
+### Pool the plastic-mulch reference
+
+```{r plastic-reference}
 # One pooled descriptive reference; not an additional model treatment.
 plastic_reference <- plastic_bed_data %>%
   summarise(
@@ -473,11 +614,12 @@ plastic_reference <- plastic_bed_data %>%
     total_yield_kg = sum(yield_kg),
     total_area_m2 = sum(harvest_area_m2)
   ) %>%
-  mutate(
-    yield_t_ha = total_yield_kg / total_area_m2 * 10
-  )
+mutate(
+mean_head_g = if_else(heads > 0, total_yield_kg * 1000 / heads, NA_real_),
+yield_kg_ha = total_yield_kg / total_area_m2 * 10000
+)
 
-plastic_ref_t_ha <- plastic_reference$yield_t_ha
+plastic_ref_kg_ha <- plastic_reference$yield_kg_ha
 
 write.csv(
   plastic_bed_data,
@@ -491,12 +633,27 @@ write.csv(
   row.names = FALSE
 )
 
+knitr::kable(
+  plastic_reference,
+  digits = 3,
+  row.names = FALSE,
+caption = "Pooled marketable yield and mean head weight under plastic mulch"
+)
+```
+
+## Yield figure
+
+Negative weeks indicate mowing before transplanting.
+Positive weeks indicate mowing after transplanting.
+
+```{r yield-figure}
+
 p <- ggplot(
   plot_data,
-  aes(x = treatment, y = yield_t_ha)
+aes(x = treatment, y = yield_kg_ha)
 ) +
   geom_hline(
-    yintercept = plastic_ref_t_ha,
+yintercept = plastic_ref_kg_ha,
     linetype = "dashed",
     colour = "#346B87",
     linewidth = 0.8
@@ -527,21 +684,17 @@ p <- ggplot(
   scale_x_discrete(labels = treatment_labels) +
   expand_limits(y = 0) +
   labs(
-    subtitle = sprintf(
-      "Dashed line: plastic mulch reference = %.2f t/ha",
-      plastic_ref_t_ha
-    ),
-    x = "Mowing times relative to transplanting",
-    y = "Harvested fresh yield (t/ha)",
-    shape = "Block",
-    caption = paste0(
-      "Living mulch: points = plots; diamonds = adjusted means; bars = +/- 1 model-based SE.\n",
-      "Plastic mulch: pooled fresh yield from four sections, each with independent East and West beds.\n",
-      sprintf(
-        "Each bed section: %.2f m2; reference only, excluded from ANOVA and Tukey tests.",
-        plastic_bed_area_m2
-      )
-    )
+subtitle = sprintf("Plastic-mulch reference: %s kg/ha",
+                   formatC(plastic_ref_kg_ha, format = "f", digits = 0,
+                           big.mark = ",")),
+x = "Mowing weeks relative to transplanting",
+y = "Marketable broccoli yield (kg/ha)",
+shape = "Block",
+caption = paste(
+  "Points show plot yields. Diamonds and bars show adjusted means and one SE.",
+  "The dashed line shows the pooled yield from the two plastic-mulched beds.",
+  sep = "\n"
+)
   ) +
   theme_classic(base_size = 11) +
   theme(
