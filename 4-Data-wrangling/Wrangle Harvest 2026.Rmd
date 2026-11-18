@@ -1,0 +1,577 @@
+---
+title: "2026 broccoli harvest data wrangling"
+author: "Xilei Fu"
+output: html_document
+---
+
+```{r project-paths, include=FALSE}
+project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+
+repeat {
+  if (all(dir.exists(file.path(project_root, c("2-Data", "5-Analysis"))))) {
+    break
+  }
+
+  parent <- dirname(project_root)
+  if (identical(parent, project_root)) {
+    stop("Open the Xilei-Living-cover-crop project before knitting.")
+  }
+  project_root <- parent
+}
+
+folders <- list.dirs(project_root, recursive = FALSE, full.names = TRUE)
+wrangling_dir <- folders[grepl("wrangling$", basename(folders), ignore.case = TRUE)]
+
+if (length(wrangling_dir) != 1L) {
+  stop("Expected one Wrangling folder directly inside the project.")
+}
+
+raw_dir <- file.path(project_root, "2-Data", "Raw")
+clean_dir <- file.path(wrangling_dir, "Clean")
+```
+
+```{r wrangling-setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(readxl)
+
+audit_dir <- file.path(wrangling_dir, "Audit")
+dir.create(clean_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(audit_dir, recursive = TRUE, showWarnings = FALSE)
+
+write_table <- function(x, folder, name) {
+  utils::write.csv(
+    x, file.path(folder, paste0(name, ".csv")),
+    row.names = FALSE, na = ""
+  )
+}
+
+save_clean <- function(x, name) write_table(x, clean_dir, name)
+save_audit <- function(x, name) write_table(x, audit_dir, name)
+
+weed_file <- file.path(raw_dir, "Vegetation survey - broccoli harvest.xlsx")
+yield_file <- file.path(raw_dir, "Broccoli harvest.xlsx")
+
+for (path in c(weed_file, yield_file)) {
+  if (!file.exists(path)) stop("Missing GitHub workbook in 2-Data/Raw: ", path)
+}
+
+save_audit(
+  data.frame(
+    workbook = basename(c(weed_file, yield_file)),
+    md5 = unname(tools::md5sum(c(weed_file, yield_file)))
+  ),
+  "Input_workbooks"
+)
+```
+
+```{r read-weed-harvest}
+weed_raw <- read_excel(
+  weed_file,
+  sheet = "2026",
+  range = cell_cols("A:J"),
+  col_types = c(
+    "date", "numeric", "numeric", "numeric", "numeric",
+    "text", "text", "numeric", "numeric", "date"
+  )
+)
+
+expected_headers <- c(
+  "Biomass collection date", "Weeks after transplanting", "Block",
+  "Treatment", "Quadrat", "Relative location to Broccoli: in row or in cover crop",
+  "Species", "Biomass weight without bags, scale tared (gram)",
+  "Quadrat size (m2)", "Weight date"
+)
+stopifnot(identical(names(weed_raw), expected_headers))
+
+names(weed_raw) <- c(
+  "collection_date", "weeks_after_transplanting", "block", "treatment",
+  "quadrat", "source_location", "source_species", "source_weight_g",
+  "source_area_m2", "weighing_date"
+)
+
+weed_raw$excel_row <- seq_len(nrow(weed_raw)) + 1L
+weed_raw <- weed_raw |>
+  filter(if_any(-excel_row, ~ !is.na(.x)))
+
+if (nrow(weed_raw) != 417L) {
+  stop("Use the 417-record GitHub version of the 2026 vegetation workbook.")
+}
+
+duplicate_row <- duplicated(weed_raw[setdiff(names(weed_raw), "excel_row")])
+save_audit(weed_raw[duplicate_row, ], "Weed_exact_duplicates")
+if (any(duplicate_row)) stop("Review Weed_exact_duplicates.csv.")
+
+records <- weed_raw |>
+  mutate(
+    collection_date = as.Date(collection_date),
+    weighing_date = as.Date(weighing_date),
+    location = trimws(source_location),
+    location = if_else(treatment == 1, "Cover crop", location),
+    species = toupper(trimws(gsub("[[:space:]]+", " ", source_species))),
+    species = recode(
+      species,
+      "UNKNOWNN MONOCOTS" = "UNKNOWN MONOCOTS",
+      "UNKNOWNN DICOTS" = "UNKNOWN DICOTS"
+    ),
+    weight_g = source_weight_g,
+    area_m2 = if_else(location == "Broccoli", 0.28, 0.16),
+    cutting_height_cm = if_else(location == "Broccoli", 0, 8),
+    stratum = if_else(location == "Broccoli", "Broccoli", "Cover_crop"),
+    sample_id = paste0("B", block, "_T", treatment, "_", stratum, "_Q", quadrat)
+  )
+
+stopifnot(
+  all(records$block %in% 1:4),
+  all(records$treatment %in% 1:4),
+  all(records$quadrat %in% 1:4),
+  all(records$location %in% c("Broccoli", "Cover crop")),
+  !anyNA(records$collection_date),
+  all(!is.na(records$species) & nzchar(records$species)),
+  all(is.finite(records$weight_g) & records$weight_g >= 0)
+)
+```
+
+```{r correct-weight-and-classify}
+target <- which(
+  records$collection_date == as.Date("2026-09-11") &
+  records$block == 4 & records$treatment == 4 &
+  records$location == "Cover crop" & records$quadrat == 2 &
+  records$species == "UNKNOWN MONOCOTS"
+)
+
+stopifnot(length(target) == 1L)
+portions_g <- c(1.34, 0.07)
+combined_g <- sum(portions_g)
+
+if (!any(abs(records$source_weight_g[target] - c(portions_g, combined_g)) < 1e-8)) {
+  stop("Review the source weight for B4/T4 interrow Q2 UNKNOWN MONOCOTS.")
+}
+records$weight_g[target] <- combined_g
+
+save_audit(
+  records[target, ] |>
+    select(excel_row, collection_date, weighing_date, sample_id, species,
+           source_weight_g, weight_g),
+  "Split_weighing_correction"
+)
+
+weed_codes <- c(
+  "AMARE", "ARTVU", "CAPBP", "CHEAL", "DIGIS", "DIGSA", "ECHCG",
+  "GASCI", "LACSE", "MALNE", "MEDLU", "OXASD", "OXAST", "PLANA",
+  "POLLA", "POLPE", "POROL", "SETSP", "SETPU", "SETVI", "TRFRE"
+)
+berseem_codes <- c("TRFAL", "BERSEEM", "BERSEEM CLOVER", "TRIFOLIUM ALEXANDRINUM")
+rye_codes <- c("RYE", "CEREAL RYE", "SECALE CEREALE", "SECCE")
+volunteer_codes <- c("CLOVER", "VOLUNTEER CLOVER")
+
+records <- records |>
+  mutate(
+    is_unknown_weed = grepl("^UNKNOWN($| )", species),
+    component = case_when(
+      species %in% c(berseem_codes, rye_codes) ~ "Cover crop",
+      species %in% volunteer_codes ~ "Volunteer",
+      species %in% weed_codes | is_unknown_weed ~ "Weed",
+      TRUE ~ "Unmapped"
+    ),
+    species_label = case_when(
+      species %in% berseem_codes ~ "Berseem clover",
+      species %in% rye_codes ~ "Cereal rye",
+      species %in% volunteer_codes ~ "Volunteer clover",
+      TRUE ~ species
+    )
+  )
+
+unmapped <- filter(records, component == "Unmapped")
+save_audit(unmapped, "Unmapped_species")
+if (nrow(unmapped)) stop("Review Unmapped_species.csv.")
+
+save_audit(
+  distinct(records, source_species, species, species_label, component),
+  "Species_classification"
+)
+save_audit(
+  filter(records, is.na(source_area_m2) | abs(source_area_m2 - area_m2) > 1e-8 |
+           is.na(source_location) | source_location != location),
+  "Sampling_corrections"
+)
+save_audit(filter(records, is_unknown_weed), "Unknown_weed_records")
+```
+
+```{r validate-quadrats}
+samples <- records |>
+  distinct(sample_id, block, treatment, location, stratum, quadrat,
+           area_m2, cutting_height_cm, collection_date)
+
+expected <- bind_rows(
+  expand_grid(block = 1:4, treatment = 1L, location = "Cover crop", quadrat = 1:4),
+  expand_grid(block = 1:4, treatment = 2:4,
+              location = c("Broccoli", "Cover crop"), quadrat = 1:2)
+)
+
+sample_keys <- c("block", "treatment", "location", "quadrat")
+missing_samples <- anti_join(expected, samples, by = sample_keys)
+extra_samples <- anti_join(samples, expected, by = sample_keys)
+
+save_audit(missing_samples, "Missing_quadrats")
+save_audit(extra_samples, "Unexpected_quadrats")
+
+stopifnot(
+  nrow(samples) == 64L,
+  !anyDuplicated(samples$sample_id),
+  nrow(missing_samples) == 0L,
+  nrow(extra_samples) == 0L,
+  !anyDuplicated(records[c("sample_id", "species")])
+)
+
+save_clean(records, "clean_T1_T4_records")
+save_clean(samples, "Sample_metadata")
+```
+
+```{r prepare-biomass-tables}
+quadrat_biomass <- records |>
+  group_by(sample_id, block, treatment, location, quadrat) |>
+  summarise(
+    area_m2 = first(area_m2),
+    identified_weed_g = sum(weight_g[component == "Weed" & !is_unknown_weed]),
+    unknown_weed_g = sum(weight_g[component == "Weed" & is_unknown_weed]),
+    volunteer_g = sum(weight_g[component == "Volunteer"]),
+    n_cover_crop_records = sum(component == "Cover crop"),
+    recorded_cover_crop_g = if (any(component == "Cover crop")) {
+      sum(weight_g[component == "Cover crop"])
+    } else {
+      NA_real_
+    },
+    recorded_total_g = sum(weight_g),
+    .groups = "drop"
+  ) |>
+  mutate(
+    identified_weed_g_m2 = identified_weed_g / area_m2,
+    unknown_weed_g_m2 = unknown_weed_g / area_m2,
+    volunteer_g_m2 = volunteer_g / area_m2,
+    weed_g_m2 = (identified_weed_g + unknown_weed_g) / area_m2,
+    recorded_cover_crop_g_m2 = recorded_cover_crop_g / area_m2,
+    recorded_total_g_m2 = recorded_total_g / area_m2
+  )
+
+plot_biomass <- quadrat_biomass |>
+  group_by(block, treatment, location) |>
+  summarise(
+    n_quadrats = n(),
+    across(c(identified_weed_g_m2, unknown_weed_g_m2, volunteer_g_m2,
+             weed_g_m2, recorded_total_g_m2), mean),
+    .groups = "drop"
+  ) |>
+  mutate(block = paste0("B", block), treatment = paste0("T", treatment))
+
+stopifnot(
+  nrow(plot_biomass) == 28L,
+  all(plot_biomass$n_quadrats == ifelse(plot_biomass$treatment == "T1", 4L, 2L))
+)
+
+cc_records <- records |>
+  filter(component == "Cover crop") |>
+  group_by(block, treatment, location, quadrat, species_label) |>
+  summarise(Area_m2 = first(area_m2), Weight_g = sum(weight_g), .groups = "drop") |>
+  transmute(
+    Block = paste0("B", block), Treatment = paste0("T", treatment),
+    Location = location, Quadrat = quadrat, Species = species_label,
+    Area_m2, Weight_g, Biomass_g_m2 = Weight_g / Area_m2
+  )
+
+save_clean(quadrat_biomass, "quadrat_biomass_components")
+save_clean(plot_biomass, "plot_biomass_components")
+save_clean(cc_records, "recorded_cover_crop_biomass")
+```
+
+```{r prepare-community-categories}
+community_samples <- samples |>
+  transmute(
+    Sample_ID = sample_id,
+    Block = paste0("B", block), Treatment = paste0("T", treatment),
+    Quadrat = quadrat,
+    Location = if_else(treatment == 1, "Weedy check", location),
+    Stratum = stratum, Area_m2 = area_m2,
+    Cutting_height_cm = cutting_height_cm, Collection_date = collection_date
+  )
+
+category_summary <- records |>
+  group_by(Broad_category = component) |>
+  summarise(Biomass_g = sum(weight_g), Records = n(), .groups = "drop") |>
+  mutate(Percent_of_recorded_mass = 100 * Biomass_g / sum(Biomass_g))
+
+observed_categories <- records |>
+  group_by(Sample_ID = sample_id, Broad_category = component) |>
+  summarise(Biomass_g = sum(weight_g), .groups = "drop")
+
+category_quadrats <- expand_grid(
+  Sample_ID = community_samples$Sample_ID,
+  Broad_category = c("Volunteer", "Weed", "Cover crop")
+) |>
+  left_join(observed_categories, by = c("Sample_ID", "Broad_category")) |>
+  mutate(Biomass_g = replace_na(Biomass_g, 0)) |>
+  left_join(community_samples, by = "Sample_ID") |>
+  mutate(Biomass_g_m2 = Biomass_g / Area_m2)
+
+category_plots <- category_quadrats |>
+  group_by(Block, Treatment, Stratum, Broad_category) |>
+  summarise(
+    N_quadrats = n(),
+    Mean_quadrat_biomass_g = mean(Biomass_g),
+    Mean_biomass_g_m2 = mean(Biomass_g_m2),
+    .groups = "drop"
+  )
+
+category_treatments <- category_plots |>
+  group_by(Treatment, Stratum, Broad_category) |>
+  summarise(
+    N_plots = n(),
+    SD_quadrat_biomass_g = sd(Mean_quadrat_biomass_g),
+    SE_quadrat_biomass_g = SD_quadrat_biomass_g / sqrt(N_plots),
+    SD_biomass_g_m2 = sd(Mean_biomass_g_m2),
+    SE_biomass_g_m2 = SD_biomass_g_m2 / sqrt(N_plots),
+    Mean_quadrat_biomass_g = mean(Mean_quadrat_biomass_g),
+    Mean_biomass_g_m2 = mean(Mean_biomass_g_m2),
+    .groups = "drop"
+  )
+
+stopifnot(
+  nrow(category_quadrats) == 192L,
+  all(category_treatments$N_plots == 4L),
+  abs(sum(category_quadrats$Biomass_g) - sum(records$weight_g)) < 1e-8
+)
+
+save_clean(category_summary, "Category_mass_summary")
+save_clean(category_quadrats, "Category_biomass_by_quadrat")
+save_clean(category_plots, "Category_biomass_plot_means")
+save_clean(category_treatments, "Category_biomass_treatment_summary")
+```
+
+```{r prepare-diversity-indices}
+weed_mass <- records |>
+  filter(component == "Weed") |>
+  group_by(Sample_ID = sample_id, Species = species, is_unknown_weed) |>
+  summarise(mass_g = sum(weight_g), .groups = "drop")
+
+index_input <- bind_rows(
+  mutate(weed_mass, Analysis = "Total weeds"),
+  weed_mass |>
+    filter(!is_unknown_weed) |>
+    mutate(Analysis = "Identified weed codes")
+) |>
+  filter(mass_g > 0)
+
+sample_totals <- quadrat_biomass |>
+  transmute(
+    Sample_ID = sample_id,
+    Recorded_mass_g = recorded_total_g,
+    Total_weed_mass_g = identified_weed_g + unknown_weed_g
+  )
+
+quadrat_indices <- index_input |>
+  group_by(Sample_ID, Analysis) |>
+  summarise(
+    Richness = n(),
+    Included_mass_g = sum(mass_g),
+    Inverse_Simpson = 1 / sum((mass_g / sum(mass_g))^2),
+    .groups = "drop"
+  ) |>
+  mutate(Simpson_evenness = Inverse_Simpson / Richness) |>
+  left_join(community_samples, by = "Sample_ID") |>
+  left_join(sample_totals, by = "Sample_ID") |>
+  mutate(Omitted_fraction_of_total_weed_mass = 1 - Included_mass_g / Total_weed_mass_g)
+
+stopifnot(
+  nrow(quadrat_indices) == 2L * nrow(community_samples),
+  all(quadrat_indices$Inverse_Simpson >= 1 - 1e-8),
+  all(quadrat_indices$Inverse_Simpson <= quadrat_indices$Richness + 1e-8),
+  all(quadrat_indices$Simpson_evenness <= 1 + 1e-8)
+)
+
+plot_indices <- quadrat_indices |>
+  group_by(Analysis, Block, Treatment, Stratum) |>
+  summarise(
+    N_quadrats = n(),
+    across(c(Richness, Inverse_Simpson, Simpson_evenness), mean),
+    .groups = "drop"
+  )
+
+stopifnot(nrow(plot_indices) == 56L)
+save_clean(quadrat_indices, "Quadrat_indices")
+save_clean(plot_indices, "Plot_mean_indices")
+```
+
+```{r prepare-species-composition}
+species_quadrats <- expand_grid(
+  Sample_ID = community_samples$Sample_ID,
+  Species = sort(unique(weed_mass$Species))
+) |>
+  left_join(select(weed_mass, Sample_ID, Species, mass_g),
+            by = c("Sample_ID", "Species")) |>
+  mutate(Biomass_g = replace_na(mass_g, 0)) |>
+  select(-mass_g) |>
+  left_join(community_samples, by = "Sample_ID") |>
+  mutate(Biomass_g_m2 = Biomass_g / Area_m2)
+
+species_plots <- species_quadrats |>
+  group_by(Block, Treatment, Stratum, Species) |>
+  summarise(Biomass_g_m2 = mean(Biomass_g_m2), .groups = "drop")
+
+species_means <- species_plots |>
+  group_by(Treatment, Stratum, Species) |>
+  summarise(Mean_biomass_g_m2 = mean(Biomass_g_m2), .groups = "drop")
+
+crosscheck <- species_quadrats |>
+  group_by(Sample_ID) |>
+  summarise(from_species = sum(Biomass_g_m2), .groups = "drop") |>
+  left_join(
+    transmute(quadrat_biomass, Sample_ID = sample_id, from_biomass = weed_g_m2),
+    by = "Sample_ID"
+  )
+
+stopifnot(
+  nrow(crosscheck) == 64L,
+  all(abs(crosscheck$from_species - crosscheck$from_biomass) < 1e-8)
+)
+
+save_clean(species_quadrats, "Species_composition_quadrats")
+save_clean(species_plots, "Species_composition_plot_means")
+save_clean(species_means, "Species_composition_all_taxa")
+save_audit(crosscheck, "Biomass_diversity_crosscheck")
+```
+
+```{r read-and-clean-broccoli-heads}
+read_heads <- function(sheet, identifiers) {
+  columns <- c(
+    "harvest_date", identifiers, "row_position", "fresh_weight_g",
+    "grade", "appearance_note", "hollow_core", "marketable"
+  )
+
+  x <- read_excel(
+    yield_file, sheet = sheet,
+    range = cell_cols(c(1L, length(columns))),
+    col_types = c("date", rep("text", length(columns) - 1L))
+  )
+  names(x) <- columns
+  x$excel_row <- seq_len(nrow(x)) + 1L
+
+  x |>
+    mutate(across(where(is.character), ~ na_if(trimws(.x), ""))) |>
+    filter(if_any(all_of(columns), ~ !is.na(.x))) |>
+    mutate(
+      harvest_date = as.Date(harvest_date),
+      across(all_of(identifiers), toupper),
+      row_position = recode(
+        toupper(row_position), E = "EAST", W = "WEST",
+        M = "MIDDLE", CENTER = "MIDDLE", CENTRE = "MIDDLE"
+      ),
+      fresh_weight_g = as.numeric(fresh_weight_g),
+      field_flag = toupper(marketable),
+      marketable = field_flag
+    )
+}
+
+living <- read_heads("living mulch", c("block", "treatment"))
+plastic <- read_heads("plastic mulch", "section")
+
+for (x in list(living, plastic)) {
+  stopifnot(
+    !anyNA(x$harvest_date),
+    all(is.finite(x$fresh_weight_g) & x$fresh_weight_g > 0),
+    all(x$grade %in% as.character(1:7)),
+    all(is.na(x$field_flag) | x$field_flag %in% c("Y", "N"))
+  )
+}
+
+stopifnot(
+  all(living$block %in% paste0("B", 1:4)),
+  all(living$treatment %in% paste0("T", 1:4)),
+  all(living$row_position %in% c("EAST", "MIDDLE", "WEST")),
+  all(plastic$section %in% as.character(1:4)),
+  all(plastic$row_position %in% c("EAST", "WEST"))
+)
+
+confirmed_head <- which(
+  plastic$harvest_date == as.Date("2026-10-22") &
+  plastic$section == "2" & plastic$row_position == "WEST" &
+  plastic$fresh_weight_g == 241 & plastic$grade == "3"
+)
+stopifnot(length(confirmed_head) == 1L)
+stopifnot(is.na(plastic$field_flag[confirmed_head]) ||
+            plastic$field_flag[confirmed_head] == "Y")
+plastic$marketable[confirmed_head] <- "Y"
+
+marketable_head <- function(grade, flag) {
+  grade %in% c("3", "4", "5") & flag %in% "Y"
+}
+
+living <- living |>
+  mutate(
+    in_middle_strip = treatment %in% c("T2", "T3", "T4") & row_position == "MIDDLE",
+    in_yield = in_middle_strip & marketable_head(grade, marketable)
+  )
+
+plastic <- plastic |>
+  mutate(in_yield = marketable_head(grade, marketable))
+
+living_heads <- filter(living, in_middle_strip)
+
+save_audit(plastic[confirmed_head, ], "Plastic_confirmed_head")
+save_clean(living, "Living_mulch_clean_heads")
+save_clean(plastic, "Plastic_mulch_clean_heads")
+```
+
+```{r prepare-yield-tables}
+whole_plot_m2 <- 4.0 * 6.7
+living_strip_area_m2 <- whole_plot_m2 / 3
+plastic_section_area_m2 <- 2 * whole_plot_m2 / 3
+
+summarise_yield <- function(head_data, keys, area) {
+  head_data |>
+    group_by(across(all_of(keys))) |>
+    summarise(
+      yield_kg = sum(fresh_weight_g[in_yield]) / 1000,
+      heads = sum(in_yield),
+      .groups = "drop"
+    ) |>
+    mutate(
+      mean_head_g = if_else(heads > 0, yield_kg * 1000 / heads, NA_real_),
+      harvest_area_m2 = area,
+      yield_kg_ha = yield_kg / harvest_area_m2 * 10000
+    )
+}
+
+yield_plots <- summarise_yield(
+  living_heads, c("block", "treatment"), living_strip_area_m2
+)
+
+plastic_beds <- summarise_yield(
+  plastic, c("section", "row_position"), plastic_section_area_m2
+)
+
+stopifnot(
+  nrow(yield_plots) == 12L,
+  all(table(yield_plots$block, yield_plots$treatment) == 1L),
+  nrow(plastic_beds) == 8L,
+  all(table(plastic_beds$section, plastic_beds$row_position) == 1L)
+)
+
+plastic_reference <- plastic_beds |>
+  summarise(
+    bed_sections = n(), heads = sum(heads),
+    total_yield_kg = sum(yield_kg), total_area_m2 = sum(harvest_area_m2)
+  ) |>
+  mutate(
+    mean_head_g = if_else(heads > 0, total_yield_kg * 1000 / heads, NA_real_),
+    yield_kg_ha = total_yield_kg / total_area_m2 * 10000
+  )
+
+middle_counts <- living_heads |>
+  group_by(treatment) |>
+  summarise(weighed = n(), marketable = sum(in_yield), .groups = "drop")
+
+save_clean(yield_plots, "Plot_yield")
+save_clean(plastic_beds, "Plastic_mulch_bed_yield")
+save_clean(plastic_reference, "Plastic_mulch_reference")
+save_clean(middle_counts, "Yield_middle_strip_counts")
+```
