@@ -134,102 +134,124 @@ show_table(select(
 
 ## Weed community composition at harvest
 
-Stacked bars show the contribution of each weed group to mean dry biomass. The figures use the same colours and legend. The display cutoffs keep the legend readable. All recorded weed labels enter the primary indices. The six highest-biomass identified codes in the interrow and control comparison and the three highest in broccoli rows are labelled individually. Rankings give equal weight to each treatment within its sampling stratum. Remaining identified weeds and unidentified groups are shown separately.
+Each panel shows the five identified weeds with the highest mean dry biomass in its sampling stratum. Rankings give equal weight to each treatment mean: T2–T4 in broccoli rows and T1–T4 in the interrow comparison. Others pools the remaining identified species and all unidentified weed groups. The primary diversity indices use the full weed community.
 
 ```{r composition-display-groups}
-rank_species <- function(stratum, n_keep) {
-  d <- subset(sp_means, Stratum == stratum & !grepl("^UNKNOWN", Species))
-  ranking <- aggregate(Mean_biomass_g_m2 ~ Species, d, mean)
-  index <- order(-ranking$Mean_biomass_g_m2, ranking$Species)
-  head(as.character(ranking$Species[index]), n_keep)
-}
+sp_top <- sp_means |>
+  filter(!startsWith(Species, "UNKNOWN")) |>
+  group_by(Stratum, Species) |>
+  summarise(rank_biomass = mean(Mean_biomass_g_m2), .groups = "drop") |>
+  filter(rank_biomass > 0) |>
+  arrange(Stratum, desc(rank_biomass), Species) |>
+  group_by(Stratum) |>
+  slice_head(n = 5) |>
+  ungroup()
 
-sp_keep <- union(rank_species("Cover_crop", 6), rank_species("Broccoli", 3))
+sp_display <- sp_means |>
+  left_join(
+    transmute(sp_top, Stratum, Species, Display_group = Species),
+    by = c("Stratum", "Species")
+  ) |>
+  mutate(Display_group = coalesce(Display_group, "Others")) |>
+  group_by(Treatment, Stratum, Display_group) |>
+  summarise(Mean_biomass_g_m2 = sum(Mean_biomass_g_m2), .groups = "drop")
 
-sp_means$Display_group <- with(
-  sp_means,
-  ifelse(
-    grepl("^UNKNOWN", Species), "Unknown weeds",
-    ifelse(Species %in% sp_keep, as.character(Species), "Other weeds")
-  )
+sp_totals <- sp_means |>
+  group_by(Treatment, Stratum) |>
+  summarise(Mean_biomass_g_m2 = sum(Mean_biomass_g_m2), .groups = "drop")
+
+display_check <- sp_display |>
+  group_by(Treatment, Stratum) |>
+  summarise(groups = n(), displayed = sum(Mean_biomass_g_m2), .groups = "drop") |>
+  left_join(sp_totals, by = c("Treatment", "Stratum"))
+
+stopifnot(
+  all(display_check$groups == 6L),
+  all(abs(display_check$displayed - display_check$Mean_biomass_g_m2) < 1e-8)
 )
-
-sp_display <- aggregate(
-  Mean_biomass_g_m2 ~ Treatment + Stratum + Display_group,
-  sp_means, sum
-)
-sp_totals <- aggregate(
-  Mean_biomass_g_m2 ~ Treatment + Stratum,
-  sp_means, sum
-)
-
 write_csv(sp_display, "Species_composition_display_groups.csv")
 write_csv(sp_totals, "Species_composition_total_weeds.csv")
 ```
 
-```{r composition-legend}
-sp_levels <- c(sp_keep, "Unknown weeds", "Other weeds")
-sp_display$Display_group <- factor(sp_display$Display_group, levels = sp_levels)
+```{r composition-total-labels}
+biomass_plots <- read_clean("plot_biomass_components") |>
+  mutate(
+    Stratum = recode(location, "Cover crop" = "Cover_crop", "Broccoli" = "Broccoli"),
+    Block = factor(block), Treatment = factor(treatment)
+  )
 
+total_means <- biomass_plots |>
+  group_by(Stratum) |>
+  group_modify(function(d, key) {
+    d$Treatment <- droplevels(d$Treatment)
+    stopifnot(all(table(d$Block, d$Treatment) == 1L))
+    fit <- lm(weed_g_m2 ~ Treatment + Block, data = d, na.action = na.fail)
+    means <- as.data.frame(emmeans::emmeans(fit, ~ Treatment, weights = "equal"))
+    select(means, Treatment, emmean, SE)
+  }) |>
+  ungroup()
+
+total_check <- left_join(sp_totals, total_means, by = c("Treatment", "Stratum"))
+stopifnot(
+  nrow(total_check) == nrow(total_means),
+  all(abs(total_check$Mean_biomass_g_m2 - total_check$emmean) < 1e-8)
+)
+```
+
+```{r composition-legend}
 sp_colors <- c(
-  SETPU = "#E76F61", DIGIS = "#55AEB3", ARTVU = "#B99535",
-  ECHCG = "#7AA65A", CHEAL = "#6693CE", MALNE = "#AD83BA",
-  AMARE = "#D96C9D", "Unknown weeds" = "#C4C4C4", "Other weeds" = "#666666"
+  AMARE = "#cf6799", DIGIS = "#42a4ad", SETPU = "#d75f51",
+  ARTVU = "#ba9433", DIGSA = "#85569d", ECHCG = "#6c9951",
+  CHEAL = "#628fc8", MALNE = "#ad83ba", Others = "#7c7c7c"
+)
+sp_labels <- c(
+  AMARE = "Redroot pigweed", DIGIS = "Smooth crabgrass", SETPU = "Yellow foxtail",
+  ARTVU = "Common mugwort", DIGSA = "Large crabgrass", ECHCG = "Barnyard grass",
+  CHEAL = "Common lambsquarters", MALNE = "Common mallow", Others = "Others"
 )
 
-extra <- setdiff(sp_keep, names(sp_colors))
+extra <- setdiff(unique(sp_top$Species), names(sp_colors))
 if (length(extra)) {
-  sp_colors <- c(
-    sp_colors,
-    setNames(grDevices::hcl.colors(length(extra), "Dark 3"), extra)
-  )
+  sp_colors <- c(sp_colors, setNames(grDevices::hcl.colors(length(extra), "Dark 3"), extra))
+  sp_labels <- c(sp_labels, setNames(extra, extra))
 }
 
-common_names <- c(
-  SETPU = "Yellow foxtail", DIGIS = "Smooth crabgrass",
-  ARTVU = "Common mugwort", ECHCG = "Barnyard grass",
-  CHEAL = "Common lambsquarters", MALNE = "Common mallow",
-  AMARE = "Redroot pigweed"
-)
-
-sp_labels <- setNames(sp_levels, sp_levels)
-named <- intersect(sp_keep, names(common_names))
-sp_labels[named] <- sprintf("%s (%s)", common_names[named], named)
+composition_breaks <- pretty(c(0, max(sp_display$Mean_biomass_g_m2)), n = 4)
 ```
 
 ```{r composition-plot-function}
 make_species_plot <- function(stratum, subtitle) {
-  d <- subset(sp_display, Stratum == stratum)
-  totals <- subset(sp_totals, Stratum == stratum)
+  local_groups <- c(sp_top$Species[sp_top$Stratum == stratum], "Others")
+  d <- filter(sp_display, Stratum == stratum) |>
+    mutate(Display_group = factor(Display_group, levels = local_groups))
+
+  treatment_order <- paste0("T", 1:4)
+  axis_labels <- setNames(paste0(treatment_order, "\nNot sampled"), treatment_order)
+  totals <- filter(total_means, Stratum == stratum)
+  trt <- as.character(totals$Treatment)
+  axis_labels[trt] <- sprintf("%s\n%.1f \u00b1 %.1f", trt, totals$emmean, totals$SE)
 
   ggplot(d, aes(Treatment, Mean_biomass_g_m2, fill = Display_group)) +
-    geom_col(width = 0.62) +
-    geom_text(
-      data = totals, inherit.aes = FALSE,
-      aes(Treatment, Mean_biomass_g_m2, label = sprintf("%.1f", Mean_biomass_g_m2)),
-      vjust = -0.5, family = "serif", size = 4
+    geom_col(position = position_dodge(width = 0.86), width = 0.80) +
+    scale_fill_manual(values = sp_colors, breaks = local_groups, labels = unname(sp_labels[local_groups])) +
+    scale_x_discrete(limits = treatment_order, labels = axis_labels) +
+    scale_y_continuous(
+      breaks = composition_breaks, limits = range(composition_breaks),
+      expand = expansion(mult = c(0, 0.03))
     ) +
-    scale_fill_manual(
-      values = sp_colors, limits = sp_levels, labels = sp_labels, drop = FALSE
-    ) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
-    guides(fill = guide_legend(ncol = 3, byrow = TRUE)) +
+    guides(fill = guide_legend(ncol = 2, byrow = TRUE)) +
     labs(
-      title = "Weed community composition at broccoli harvest",
-      subtitle = subtitle,
-      x = "Treatment",
-      y = expression(Mean~weed~dry~biomass~(g~m^{-2})),
-      fill = NULL,
-      caption = "Labels give total weed biomass. Bars show means of four plots."
+      title = "Weed community composition at broccoli harvest", subtitle = subtitle,
+      x = "Treatment (total weed biomass marginal mean \u00b1 SE)",
+      y = expression(Mean~weed~dry~biomass~(g~m^{-2})), fill = NULL
     ) +
-    theme_classic(base_size = 13, base_family = "serif") +
+    theme_classic(base_size = 13) +
     theme(
       axis.text = element_text(colour = "black"),
+      panel.grid.major.y = element_line(colour = "grey91", linewidth = 0.3),
       legend.position = "top",
-      legend.text = element_text(size = 10),
       plot.title = element_text(face = "bold", hjust = 0.5),
-      plot.subtitle = element_text(hjust = 0.5),
-      plot.caption = element_text(hjust = 0)
+      plot.subtitle = element_text(hjust = 0.5)
     )
 }
 ```
