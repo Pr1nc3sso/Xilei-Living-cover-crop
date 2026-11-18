@@ -18,252 +18,74 @@ knitr::opts_chunk$set(
   fig.height = 4.5
 )
 
-library(readxl)
 library(dplyr)
 library(ggplot2)
 library(emmeans)
 
-```
+# Locate the project root and analysis folder.
+project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 
-## Download the source workbook
-
-```{r download-data}
-# Download the workbook from GitHub.
-# The source folder is 2-Data/Raw/.
-github_base <- paste0(
-  "https://raw.githubusercontent.com/Pr1nc3sso/",
-  "Xilei-Living-cover-crop/master/2-Data/Raw/"
-)
-
-file_url <- paste0(
-  github_base,
-  "Broccoli%20harvest.xlsx"
-)
-
-file_path <- tempfile(fileext = ".xlsx")
-
-options(timeout = max(120, getOption("timeout", 60)))
-
-status <- download.file(
-  file_url,
-  file_path,
-  mode = "wb",
-  method = "libcurl",
-  quiet = TRUE
-)
-
-if (status != 0L) {
-  stop("GitHub download failed. Check the URL.")
+while (!all(dir.exists(file.path(project_root, c("2-Data", "5-Analysis"))))) {
+  parent <- dirname(project_root)
+  if (identical(parent, project_root)) {
+    stop("Open Yield.Rmd inside the Xilei-Living-cover-crop project.")
+  }
+  project_root <- parent
 }
 
-output_dir <- file.path(
-  getwd(),
-  "Yield_results"
-)
+analysis_dir <- file.path(project_root, "5-Analysis")
 
-dir.create(
-  output_dir,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
+# Locate the Clean folder created by the Wrangling document.
+folders <- list.dirs(project_root, recursive = FALSE, full.names = TRUE)
+wrangling_dir <- folders[grepl("wrangling$", basename(folders), ignore.case = TRUE)]
 
+if (length(wrangling_dir) != 1L) {
+  stop("Expected one Wrangling folder directly inside the project.")
+}
+
+clean_dir <- file.path(wrangling_dir, "Clean")
+
+read_clean <- function(name) {
+  path <- file.path(clean_dir, paste0(name, ".csv"))
+  if (!file.exists(path)) {
+    stop("Missing clean input: ", path, ". Knit Wrangle_Harvest_2026.Rmd first.")
+  }
+  utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+}
 ```
 
-## Read living-mulch records
+## Marketable broccoli yield data
 
-```{r living-read}
-# Read the first nine columns.
-raw <- read_excel(
-  file_path,
-  sheet = "living mulch",
-  range = cell_cols("A:I"),
-  col_types = "text"
-)
+```{r read-clean-yield, include=FALSE}
+output_dir <- file.path(analysis_dir, "Yield_results")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-names(raw) <- c(
-  "harvest_date",
-  "block",
-  "treatment",
-  "row_position",
-  "fresh_weight_g",
-  "grade",
-  "appearance_note",
-  "hollow_core",
-  "marketable"
-)
-
-raw$excel_row <- seq_len(nrow(raw)) + 1L
-
-knitr::kable(
-  data.frame(
-    Sheet = "living mulch",
-    Imported_rows = nrow(raw)
-  ),
-  row.names = FALSE
-)
-```
-
-## Clean living-mulch records
-
-```{r living-clean}
-dat <- raw %>%
+plot_data <- read_clean("Plot_yield") |>
   mutate(
-    across(
-      c(block, treatment, row_position, marketable),
-      ~ na_if(toupper(trimws(.x)), "")
-    )
-  ) %>%
-  filter(
-    if_any(
-      c(block, treatment, row_position, fresh_weight_g),
-      ~ !is.na(.x)
-    )
+    block = factor(block, levels = paste0("B", 1:4)),
+    treatment = factor(treatment, levels = c("T2", "T3", "T4"))
   )
 
-if (anyNA(dat[c("block", "treatment", "row_position")])) {
-  stop("Missing identifiers. Check the source workbook.")
-}
+middle_counts <- read_clean("Yield_middle_strip_counts")
+plastic_bed_data <- read_clean("Plastic_mulch_bed_yield")
+plastic_reference <- read_clean("Plastic_mulch_reference")
 
-valid_rows <- c(
-  "E", "EAST",
-  "M", "MIDDLE", "CENTER", "CENTRE",
-  "W", "WEST"
-)
+living_strip_area_m2 <- unique(plot_data$harvest_area_m2)
+plastic_section_area_m2 <- unique(plastic_bed_data$harvest_area_m2)
+plastic_ref_kg_ha <- plastic_reference$yield_kg_ha
 
-if (
-  any(!dat$treatment %in% c("T1", "T2", "T3", "T4")) ||
-  any(!dat$row_position %in% valid_rows)
-) {
-  stop("Unexpected treatment or row labels.")
-}
-
-living_clean <- dat
-
-knitr::kable(
-  living_clean %>%
-    count(treatment, row_position, name = "Heads"),
-  caption = "Living-mulch records before middle-row selection"
+stopifnot(
+  nrow(plot_data) == 12L, !anyNA(plot_data[c("block", "treatment")]),
+  all(table(plot_data$block, plot_data$treatment) == 1L),
+  length(living_strip_area_m2) == 1L,
+  length(plastic_section_area_m2) == 1L,
+  nrow(plastic_reference) == 1L
 )
 ```
 
-## Select living-mulch middle-row heads
-
-```{r living-select}
-# Only middle-row heads enter the yield analysis.
-dat <- living_clean %>%
-  filter(
-    treatment %in% c("T2", "T3", "T4"),
-    row_position %in% c(
-      "M", "MIDDLE", "CENTER", "CENTRE"
-    )
-  ) %>%
-  mutate(
-    fresh_weight_g = as.numeric(fresh_weight_g)
-  )
-
-if (
-  nrow(dat) == 0L ||
-  anyNA(dat$fresh_weight_g) ||
-  any(!is.finite(dat$fresh_weight_g)) ||
-  any(dat$fresh_weight_g <= 0)
-) {
-  stop("Missing or invalid middle-row head weights.")
-}
-
-if (any(!dat$block %in% paste0("B", 1:4))) {
-  stop("Unexpected block labels.")
-}
-
-dat <- dat %>%
-  mutate(
-    block = factor(
-      block,
-      levels = paste0("B", 1:4)
-    ),
-    treatment = factor(
-      treatment,
- levels = c("T2", "T3", "T4")
-    )
-  )
-
-if (any(table(dat$block, dat$treatment) == 0L)) {
-  stop("A plot has no harvest records; do not assume zero yield.")
-}
-
-```
-
-## Marketable heads in the middle strip
-```{r living-marketability-check}
-marketable_head <- function(grade, flag) {
-  trimws(as.character(grade)) %in% c("3", "4", "5") &
-    toupper(trimws(flag)) %in% "Y"
-}
-
-living_heads <- dat %>%
-  mutate(in_yield = marketable_head(grade, marketable))
-
-knitr::kable(
-  living_heads %>%
-    group_by(treatment) %>%
-    summarise(weighed = n(), marketable = sum(in_yield), .groups = "drop"),
-  caption = "Middle-strip head counts by treatment"
-)
-```
-
-## Check the living-mulch harvest area
-
-```{r living-area}
-plot_length_m <- 4.0
-plot_width_m <- 6.7
-plot_area_m2 <- plot_length_m * plot_width_m
-living_strip_area_m2 <- plot_area_m2 / 3
-plastic_section_area_m2 <- 2 * plot_area_m2 / 3
-
-knitr::kable(
-  data.frame(
-    Area = c(
-      "Whole experimental plot",
-      "Harvested middle band"
-    ),
-    Area_m2 = c(
-      plot_area_m2,
-    living_strip_area_m2
-    )
-  ),
-  digits = 3,
-  row.names = FALSE,
-  caption = "Living-mulch area used in the calculation"
-)
-```
-
-## Calculate living-mulch yield
-
-```{r living-yield}
-plot_data <- living_heads %>%
-group_by(block, treatment) %>%
-summarise(
-yield_kg = sum(fresh_weight_g[in_yield]) / 1000,
-heads = sum(in_yield),
-.groups = "drop"
-) %>%
-mutate(
-mean_head_g = if_else(heads > 0, yield_kg * 1000 / heads, NA_real_),
-harvest_area_m2 = living_strip_area_m2,
-yield_kg_ha = yield_kg / harvest_area_m2 * 10000
-)
-
-stopifnot(nrow(plot_data) == 12L)
-
-knitr::kable(
-  plot_data,
-  digits = 3,
-  row.names = FALSE,
-  col.names = c(
-    "Block", "Treatment", "kg", "Heads",
-"g/head", "Area (m2)", "kg/ha"
-  ),
-caption = "Marketable head mass, head count, mean head weight and yield by plot"
-)
+```{r marketable-head-counts}
+knitr::kable(middle_counts, row.names = FALSE,
+             caption = "Weighed and marketable middle-strip heads by treatment")
 ```
 
 ## Fit the living-mulch yield model
@@ -331,39 +153,36 @@ as continuous predictors.
 ## Response and experimental unit
 
 Each 4.0 m by 6.7 m living-mulch plot contained three planting strips.
-The middle strip represented `r sprintf("%.2f", living_strip_area_m2)` square
-metres including interspaces. Marketable fresh mass from all harvests was
-summed within each plot and converted to kg/ha. Mean marketable head
-weight is expressed in grams per head.
+The harvested middle strip covered `r sprintf("%.2f", living_strip_area_m2)`
+square metres including interspaces. Marketable head fresh mass was summed
+across harvest dates within each plot and converted to kg/ha. Mean marketable
+head mass was calculated by dividing the total marketable fresh mass by the
+number of marketable heads in that plot.
 
 The yield model compared T2, T3 and T4 across four randomized blocks.
-The adjacent plastic-mulched beds provided a descriptive reference.
-Two beds with four sections each represented
-`r sprintf("%.2f", 8 * plastic_section_area_m2)` square metres including
-interspaces. Weather and equipment problems led to different transplanting
-times in the two areas.
-With one response per plot, the treatment-by-block interaction cannot be
-estimated separately from residual error. The model assumes additive
+Each plot contributed one yield observation. The model included additive
 treatment and block effects.
 
-```{r plot-data}
-plot_display <- data.frame(
-  Block = plot_data$block,
-  Treatment = plot_data$treatment,
-  Heads = plot_data$heads,
-  Harvest_area_m2 = sprintf(
-    "%.2f",
-    plot_data$harvest_area_m2
-  ),
-Yield_kg_ha = sprintf(
-"%.2f",
-plot_data$yield_kg_ha
-  )
-)
+The two adjacent plastic-mulched beds provided a descriptive reference.
+Their eight harvested bed sections covered
+`r sprintf("%.2f", plastic_reference$total_area_m2)` square metres including
+interspaces. Weather and equipment problems led to different transplanting
+times in the living-mulch and plastic-mulch areas.
 
+```{r plot-data}
 knitr::kable(
-  plot_display,
-  row.names = FALSE
+  dplyr::select(
+    plot_data,
+    block, treatment, heads, yield_kg, mean_head_g,
+    harvest_area_m2, yield_kg_ha
+  ),
+  col.names = c(
+    "Block", "Treatment", "Marketable heads", "Fresh mass (kg)",
+    "Mean head mass (g)", "Harvest area (m²)", "Yield (kg/ha)"
+  ),
+  digits = 2,
+  row.names = FALSE,
+  caption = "Marketable broccoli yield and mean head mass by plot"
 )
 ```
 
@@ -462,182 +281,21 @@ knitr::kable(
 
 ## Plastic-mulch reference
 
-### Check the plastic-mulch area
-
-```{r plastic-area}
-plastic_bed_area_m2 <- plastic_section_area_m2
-
-knitr::kable(
-  data.frame(
-    Area = c(
-      "One bed section",
-      "Four sections, two beds each"
-    ),
-    Area_m2 = c(
-      plastic_bed_area_m2,
-      8 * plastic_bed_area_m2
-    )
-  ),
-  digits = 3,
-  row.names = FALSE,
-  caption = "Plastic-mulch area used in the calculation"
-)
-```
-
-### Read plastic-mulch records
-
-```{r plastic-read}
-plastic_raw <- read_excel(
-  file_path,
-  sheet = "plastic mulch",
-  range = cell_cols("A:H"),
-col_types = c("date", rep("text", 7))
-)
-
-names(plastic_raw) <- c(
-  "harvest_date", "section", "row_position", "fresh_weight_g",
-  "grade", "appearance_note", "hollow_core", "marketable"
-)
-
-knitr::kable(
-  data.frame(
-    Sheet = "plastic mulch",
-    Imported_rows = nrow(plastic_raw)
-  ),
-  row.names = FALSE
-)
-```
-
-### Clean plastic-mulch records
-
-```{r plastic-clean}
-plastic_dat <- plastic_raw %>%
-  mutate(
-across(where(is.character), ~ na_if(trimws(.x), ""))
-  ) %>%
-  filter(
-    if_any(
-      c(harvest_date, section, row_position, fresh_weight_g),
-      ~ !is.na(.x)
-    )
-  ) %>%
-  mutate(
-    row_position = toupper(row_position),
-    row_position = recode(
-      row_position,
-      E = "EAST",
-      W = "WEST"
-    ),
-    fresh_weight_g = as.numeric(fresh_weight_g)
-  )
-
-if (
-  nrow(plastic_dat) == 0L ||
-  anyNA(plastic_dat[c("section", "row_position", "fresh_weight_g")]) ||
-  any(!plastic_dat$section %in% as.character(1:4)) ||
-  any(!plastic_dat$row_position %in% c("EAST", "WEST")) ||
-  any(!is.finite(plastic_dat$fresh_weight_g)) ||
-  any(plastic_dat$fresh_weight_g <= 0)
-) {
-  stop("Check section, row and fresh-weight entries in the plastic mulch sheet.")
-}
-
-plastic_dat <- plastic_dat %>%
-mutate(
-harvest_date = as.Date(harvest_date),
-marketable = toupper(marketable)
-)
-
-confirmed_head <- with(plastic_dat, which(
-harvest_date == as.Date("2026-10-22") & section == "2" &
-row_position == "WEST" & fresh_weight_g == 241 & grade == "3"
-))
-stopifnot(length(confirmed_head) <= 1L)
-if (length(confirmed_head) == 1L && is.na(plastic_dat$marketable[confirmed_head])) {
-plastic_dat$marketable[confirmed_head] <- "Y"
-}
-
-plastic_heads <- plastic_dat %>%
-mutate(in_yield = marketable_head(grade, marketable))
-
-knitr::kable(
-plastic_heads %>%
-summarise(weighed = n(), marketable = sum(in_yield)),
-caption = "Plastic-mulch head counts"
-)
-```
-
-### Calculate plastic-mulch yield
-
-```{r plastic-yield}
-plastic_bed_data <- plastic_heads %>%
-group_by(section, row_position) %>%
-summarise(
-heads = sum(in_yield),
-yield_kg = sum(fresh_weight_g[in_yield]) / 1000,
-.groups = "drop"
-) %>%
-mutate(
-mean_head_g = if_else(heads > 0, yield_kg * 1000 / heads, NA_real_),
-harvest_area_m2 = plastic_bed_area_m2,
-yield_kg_ha = yield_kg / harvest_area_m2 * 10000
-)
-
-if (
-  nrow(plastic_bed_data) != 8L ||
-  !all(
-    table(
-      plastic_bed_data$section,
-      plastic_bed_data$row_position
-    ) == 1L
-  )
-) {
-  stop("Expected East and West records for each of the four plastic sections.")
-}
-
+```{r plastic-bed-results}
 knitr::kable(
   plastic_bed_data,
-  digits = 3,
+  digits = 2,
   row.names = FALSE,
-caption = "Marketable yield and mean head weight by bed section"
+  caption = "Marketable yield and mean head mass by plastic-mulch bed section"
 )
 ```
 
-### Pool the plastic-mulch reference
-
-```{r plastic-reference}
-# One pooled descriptive reference; not an additional model treatment.
-plastic_reference <- plastic_bed_data %>%
-  summarise(
-    bed_sections = n(),
-    heads = sum(heads),
-    total_yield_kg = sum(yield_kg),
-    total_area_m2 = sum(harvest_area_m2)
-  ) %>%
-mutate(
-mean_head_g = if_else(heads > 0, total_yield_kg * 1000 / heads, NA_real_),
-yield_kg_ha = total_yield_kg / total_area_m2 * 10000
-)
-
-plastic_ref_kg_ha <- plastic_reference$yield_kg_ha
-
-write.csv(
-  plastic_bed_data,
-  file.path(output_dir, "Plastic_mulch_bed_yield.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  plastic_reference,
-  file.path(output_dir, "Plastic_mulch_reference.csv"),
-  row.names = FALSE
-)
-
+```{r plastic-pooled-reference}
 knitr::kable(
   plastic_reference,
-  digits = 3,
+  digits = 2,
   row.names = FALSE,
-caption = "Pooled marketable yield and mean head weight under plastic mulch"
+  caption = "Pooled marketable yield from the two plastic-mulched beds"
 )
 ```
 
@@ -722,106 +380,24 @@ shapiro.test(residuals(fit))
 ```
 
 ```{r save-results, include=FALSE}
-# Locate the local project root.
-project_root <- normalizePath(
-  getwd(),
-  winslash = "/",
-  mustWork = TRUE
+a <- as.data.frame(anova_result)
+anova_export <- data.frame(
+  Source = rownames(a), a, row.names = NULL, check.names = FALSE
 )
 
-repeat {
-  required_folders <- file.path(
-    project_root,
-    c("2-Data", "5-Analysis")
-  )
+write.csv(anova_export, file.path(output_dir, "ANOVA.csv"), row.names = FALSE)
+write.csv(emm_table, file.path(output_dir, "Adjusted_means.csv"), row.names = FALSE)
+write.csv(tukey_table, file.path(output_dir, "Tukey_comparisons.csv"), row.names = FALSE)
+saveRDS(fit, file.path(output_dir, "Yield_model.rds"))
 
-  if (all(dir.exists(required_folders))) break
-
-  parent_dir <- dirname(project_root)
-
-  if (identical(parent_dir, project_root)) {
-    stop(
-      "Run this Rmd inside the local Xilei-Living-cover-crop project."
-    )
-  }
-
-  project_root <- parent_dir
-}
-
-# Export only the final yield figure to folder 7.
-figure_dir <- file.path(project_root, "7-Extra")
-
-dir.create(
-  figure_dir,
-  recursive = TRUE,
-  showWarnings = FALSE
+ggplot2::ggsave(
+  file.path(output_dir, "Yield_ANOVA.png"),
+  plot = p, width = 7, height = 4.5, dpi = 600, bg = "white"
+)
+ggplot2::ggsave(
+  file.path(output_dir, "Yield_ANOVA.pdf"),
+  plot = p, width = 7, height = 4.5, bg = "white"
 )
 
-write.csv(
-  plot_data,
-  file.path(
-    output_dir,
-    "Plot_yield.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  anova_result,
-  file.path(
-    output_dir,
-    "ANOVA.csv"
-  )
-)
-
-write.csv(
-  emm_table,
-  file.path(
-    output_dir,
-    "Adjusted_means.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  tukey_table,
-  file.path(
-    output_dir,
-    "Tukey_comparisons.csv"
-  ),
-  row.names = FALSE
-)
-
-saveRDS(
-  fit,
-  file.path(
-    output_dir,
-    "Yield_model.rds"
-  )
-)
-
-ggsave(
-  file.path(figure_dir, "Yield_ANOVA.png"),
-  plot = p,
-  width = 7,
-  height = 4.5,
-  dpi = 600,
-  bg = "white"
-)
-
-ggsave(
-  file.path(figure_dir, "Yield_ANOVA.pdf"),
-  plot = p,
-  width = 7,
-  height = 4.5,
-  bg = "white"
-)
-
-capture.output(
-  sessionInfo(),
-  file = file.path(
-    output_dir,
-    "Session_info.txt"
-  )
-)
+capture.output(sessionInfo(), file = file.path(output_dir, "Session_info.txt"))
 ```
