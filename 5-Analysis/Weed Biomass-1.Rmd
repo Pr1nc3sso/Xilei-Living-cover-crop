@@ -19,11 +19,42 @@ knitr::opts_chunk$set(
   fig.pos = "H"
 )
 
-library(readxl)
 library(dplyr)
-library(tidyr)
 library(ggplot2)
 library(emmeans)
+```
+
+```{r project-paths, include=FALSE}
+# Locate the project root and analysis folder.
+project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+
+while (!all(dir.exists(file.path(project_root, c("2-Data", "5-Analysis"))))) {
+  parent <- dirname(project_root)
+  if (identical(parent, project_root)) {
+    stop("Open this Rmd inside the Xilei-Living-cover-crop project.")
+  }
+  project_root <- parent
+}
+
+analysis_dir <- file.path(project_root, "5-Analysis")
+
+# Locate the Clean folder created by the Wrangling document.
+folders <- list.dirs(project_root, recursive = FALSE, full.names = TRUE)
+wrangling_dir <- folders[grepl("wrangling$", basename(folders), ignore.case = TRUE)]
+
+if (length(wrangling_dir) != 1L) {
+  stop("Expected one Wrangling folder directly inside the project.")
+}
+
+clean_dir <- file.path(wrangling_dir, "Clean")
+
+read_clean <- function(name) {
+  path <- file.path(clean_dir, paste0(name, ".csv"))
+  if (!file.exists(path)) {
+    stop("Missing clean input: ", path, ". Knit Wrangle_Harvest_2026.Rmd first.")
+  }
+  utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+}
 ```
 
 ```{r output-helpers, include=FALSE}
@@ -98,7 +129,7 @@ shows the four T1 plots separately as a descriptive reference.
 
 ```{r analysis-settings, include=FALSE}
 # Output folder.
-output_dir <- file.path(getwd(), "Weed Biomass")
+output_dir <- file.path(analysis_dir, "Weed Biomass")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Treatment order, labels and colours.
@@ -121,456 +152,20 @@ treatment_colours <- c(
 locations <- c("Broccoli", "Cover crop")
 ```
 
-```{r download-workbook, include=FALSE}
-# Download the workbook from GitHub: 2-Data/Raw/.
-github_url <- paste0(
-  "https://raw.githubusercontent.com/Pr1nc3sso/",
-  "Xilei-Living-cover-crop/master/2-Data/Raw/",
-  "Vegetation%20survey%20-%20broccoli%20harvest.xlsx"
-)
-
-options(timeout = max(120, getOption("timeout", 60)))
-excel_file <- tempfile(fileext = ".xlsx")
-
-download.file(
-  github_url,
-  excel_file,
-  mode = "wb",
-  method = "libcurl",
-  quiet = TRUE
-)
-downloaded_at_utc <- format(Sys.time(), tz = "UTC")
-```
-
-```{r read-workbook, include=FALSE}
-raw <- read_excel(
-  excel_file,
-  sheet = "2026",
-  range = cell_cols("A:J"),
-  col_types = "text",
-  trim_ws = FALSE
-)
-
-expected_headers <- c(
-  "Biomass collection date",
-  "Weeks after transplanting",
-  "Block",
-  "Treatment",
-  "Quadrat",
-  "Relative location to Broccoli: in row or in cover crop",
-  "Species",
-  "Biomass weight without bags, scale tared (gram)",
-  "Quadrat size (m2)",
-  "Weight date"
-)
-
-if (!identical(names(raw), expected_headers)) {
-  stop("Excel headers changed. Check the column mapping.")
-}
-```
-
-```{r check-duplicate-rows, include=FALSE}
-# Track row numbers from the worksheet before filtering.
-source_rows <- raw
-source_rows$excel_row <- seq_len(nrow(raw)) + 1L
-source_rows <- source_rows[rowSums(!is.na(raw[1:10])) > 0, ]
-
-# Remove only exact duplicates across the original ten columns.
-duplicate_flag <- duplicated(as.data.frame(source_rows[1:10]))
-
-save_csv(
-  source_rows[duplicate_flag, ],
-  "removed_exact_duplicates.csv"
-)
-
-unique_records <- source_rows[!duplicate_flag, ]
-
-names(unique_records)[1:10] <- c(
-  "collection_date",
-  "weeks_after_transplanting",
-  "block",
-  "treatment",
-  "quadrat",
-  "location",
-  "species",
-  "weight_g",
-  "source_area_m2",
-  "weighing_date"
-)
-
-knitr::kable(
-  data.frame(
-    "Nonempty rows" = nrow(source_rows),
-    "Exact duplicates" = sum(duplicate_flag),
-    "Retained rows" = nrow(unique_records),
-    check.names = FALSE
-  ),
-  caption = "Worksheet rows before and after exact duplicate removal."
-)
-```
-
-```{r standardize-fields, include=FALSE}
-clean <- unique_records %>%
+```{r read-clean-biomass, include=FALSE}
+plot_data <- read_clean("plot_biomass_components") |>
   mutate(
-    across(
-      c(block, treatment, quadrat, weight_g, source_area_m2),
-      as.numeric
-    ),
-    source_location = location,
-    source_species = species,
-    location = trimws(gsub("[[:space:]]+", " ", location)),
-    species = toupper(trimws(gsub("[[:space:]]+", " ", species))),
-    species = recode(
-      species,
-      "UNKNOWNN MONOCOTS" = "UNKNOWN MONOCOTS",
-      "UNKNOWNN DICOTS" = "UNKNOWN DICOTS"
-    ),
-    # All T1 quadrats follow the cover-crop-area sampling protocol.
-    location = if_else(treatment == 1, "Cover crop", location)
+    block = factor(block, levels = paste0("B", 1:4)),
+    treatment = factor(treatment, levels = treatment_levels)
   )
-```
+cc_records <- read_clean("recorded_cover_crop_biomass")
 
-```{r validate-fields, include=FALSE}
-# Validate identifiers and weights.
-numeric_fields <- c(
-  "block", "treatment", "quadrat", "weight_g"
-)
-
-if (any(!is.finite(as.matrix(clean[numeric_fields])))) {
-  stop("Missing or invalid identifiers or weights.")
-}
-
-if (any(clean$weight_g < 0)) {
-  stop("Negative biomass weights.")
-}
-
-if (
-  any(!clean$block %in% 1:4) ||
-  any(!clean$treatment %in% 1:4) ||
-  any(!clean$quadrat %in% 1:4) ||
-  any(!clean$location %in% locations)
-) {
-  stop("Unexpected block, treatment, quadrat or location.")
-}
-
-if (any(is.na(clean$species) | clean$species == "")) {
-  stop("Missing species labels.")
-}
-```
-
-```{r combine-split-weighings, include=FALSE}
-# Harvest sheet "2026", collected September 11. Both portions belong to the
-# same B4/T4 interrow quadrat and species group.
-weighed_records <- mutate(clean, source_weight_g = weight_g)
-harvest_day <- as.Date("2026-09-11")
-excel_day <- as.character(as.integer(harvest_day - as.Date("1899-12-30")))
-target <- which(with(weighed_records,
-  collection_date %in% c(as.character(harvest_day), excel_day) &
-    block == 4 & treatment == 4 & location == "Cover crop" &
-    quadrat == 2 & species == "UNKNOWN MONOCOTS"
-))
-
-# Field weighings: 1.34 g on September 25 and 0.07 g on October 7.
-portions <- c(1.34, 0.07)
-combined <- sum(portions)
-recorded <- weighed_records$source_weight_g[target]
-if (length(target) == 1L && any(near(recorded, c(portions, combined)))) {
-  weighed_records$weight_g[target] <- combined
-} else if (!(length(target) == 2L && all(near(sort(recorded), sort(portions))))) {
-  stop("Check the B4/T4 interrow quadrat 2 unknown-monocot weights in the harvest workbook.")
-}
-
-save_csv(
-  select(weighed_records[target, ], excel_row, collection_date, weighing_date,
-         block, treatment, location, quadrat, species, source_weight_g, weight_g),
-  "split_weighing_audit.csv"
-)
-```
-
-```{r apply-sampling-protocol, include=FALSE}
-area_records <- weighed_records %>%
-  mutate(area_m2 = if_else(location == "Broccoli", 0.28, 0.16))
-
-area_records %>%
-  count(source_location, location, source_area_m2, area_m2, name = "Records") %>%
-  knitr::kable(
-    col.names = c("Field location", "Analysis location", "Field area", "Analysis area", "Records"),
-    caption = "Worksheet and analysis locations and quadrat areas (square metres)."
-  )
-```
-
-```{r classify-species, include=FALSE}
-# Explicit classification of the currently recorded weed codes.
-weed_species <- c(
-  "AMARE", "ARTVU", "CAPBP", "CHEAL", "DIGIS", "DIGSA",
-  "ECHCG", "GASCI", "LACSE", "MALNE", "MEDLU", "OXASD",
-  "OXAST", "PLANA", "POLLA", "POLPE", "POROL", "SETSP",
-  "SETPU", "SETVI", "TRFRE", "UNKNOWN MONOCOTS"
-)
-berseem_codes <- c("TRFAL", "BERSEEM CLOVER", "BERSEEM", "TRIFOLIUM ALEXANDRINUM")
-rye_codes <- c("RYE", "CEREAL RYE", "SECALE CEREALE", "SECCE")
-volunteer_codes <- c("CLOVER", "VOLUNTEER CLOVER")
-
-analysis_records <- area_records %>%
-  mutate(
-    is_unknown_weed = grepl("^UNKNOWN($| )", species),
-    component = case_when(
-      species %in% c(berseem_codes, rye_codes) ~ "Cover crop",
-      species %in% volunteer_codes ~ "Volunteer",
-      species %in% weed_species | is_unknown_weed ~ "Weeds",
-      TRUE ~ "Unmapped"
-    ),
-    species_label = case_when(
-      species %in% berseem_codes ~ "Berseem clover",
-      species %in% rye_codes ~ "Cereal rye",
-      species %in% volunteer_codes ~ "Volunteer clover",
-      TRUE ~ species
-    )
-  )
-
-analysis_records %>%
-  group_by(component) %>%
-  summarise(codes = n_distinct(species), records = n(), .groups = "drop") %>%
-  knitr::kable(
-    col.names = c("Component", "Species codes", "Records"),
-    caption = "Species codes and worksheet records by biomass component."
-  )
-```
-
-```{r check-species-mapping, include=FALSE}
-save_csv(
-  analysis_records %>%
-    distinct(source_species, species, species_label, component),
-  "species_classification.csv"
-)
-
-# Unknown weeds are included; unfamiliar species codes require checking.
-if (any(analysis_records$component == "Unmapped")) {
-  save_csv(
-    filter(analysis_records, component == "Unmapped"),
-    "unmapped_species.csv"
-  )
-  stop("New species codes found. Check unmapped_species.csv.")
-}
-```
-
-```{r export-record-audits, include=FALSE}
-save_csv(analysis_records, "clean_T1_T4_records.csv")
-
-save_csv(
-  analysis_records %>%
-    filter(
-      is.na(source_area_m2) |
-        abs(source_area_m2 - area_m2) > 1e-10 |
-        is.na(source_location) |
-        source_location != location
-    ),
-  "sampling_corrections.csv"
-)
-
-save_csv(
-  filter(analysis_records, is_unknown_weed),
-  "unknown_weed_records.csv"
-)
-```
-
-```{r check-quadrat-dates, include=FALSE}
-# Avoid combining different collection dates within a quadrat.
-date_check <- analysis_records %>%
-  group_by(block, treatment, location, quadrat) %>%
-  summarise(
-    n_dates = n_distinct(collection_date, na.rm = TRUE),
-    n_missing_dates = sum(
-      is.na(collection_date) | trimws(collection_date) == ""
-    ),
-    .groups = "drop"
-  )
-
-if (any(date_check$n_dates != 1L | date_check$n_missing_dates > 0L)) {
-  stop("Missing or multiple collection dates within quadrats.")
-}
-```
-
-```{r sum-quadrat-masses, include=FALSE}
-# Aggregate all observed quadrats before selecting biomass components.
-quadrat_mass <- analysis_records %>%
-  group_by(block, treatment, location, quadrat) %>%
-  summarise(
-    area_m2 = first(area_m2),
-    identified_weed_g = sum(
-      weight_g[component == "Weeds" & !is_unknown_weed]
-    ),
-    unknown_weed_g = sum(
-      weight_g[component == "Weeds" & is_unknown_weed]
-    ),
-    volunteer_g = sum(weight_g[component == "Volunteer"]),
-    n_cover_crop_records = sum(component == "Cover crop"),
-    recorded_cover_crop_g = if (any(component == "Cover crop")) {
-      sum(weight_g[component == "Cover crop"])
-    } else {
-      NA_real_
-    },
-    recorded_total_g = sum(weight_g),
-    .groups = "drop"
-  )
-```
-
-```{r calculate-quadrat-densities, include=FALSE}
-quadrat_data <- quadrat_mass %>%
-  mutate(
-    identified_weed_g_m2 = identified_weed_g / area_m2,
-    unknown_weed_g_m2 = unknown_weed_g / area_m2,
-    volunteer_g_m2 = volunteer_g / area_m2,
-
-    # Include unknown weeds; exclude volunteers and sown cover crops.
-    weed_g_m2 = (identified_weed_g + unknown_weed_g) / area_m2,
-
-    recorded_cover_crop_g_m2 = recorded_cover_crop_g / area_m2,
-    recorded_total_g_m2 = recorded_total_g / area_m2
-  )
-
-quadrat_data %>%
-  filter(block == 1, treatment == 2) %>%
-  select(location, quadrat, area_m2, identified_weed_g, unknown_weed_g, weed_g_m2) %>%
-  knitr::kable(
-    digits = 2,
-    col.names = c("Location", "Quadrat", "Area (m2)", "Identified (g)", "Unknown (g)", "Weeds (g/m2)"),
-    caption = "Block 1, T2. Weed masses and densities for each quadrat."
-  )
-```
-
-```{r expected-quadrat-grid, include=FALSE}
-# T1: 16 quadrats. T2-T4: 48 quadrats.
-expected_quadrats <- bind_rows(
-  expand_grid(
-    block = 1:4,
-    treatment = 1,
-    location = "Cover crop",
-    quadrat = 1:4
-  ),
-  expand_grid(
-    block = 1:4,
-    treatment = 2:4,
-    location = locations,
-    quadrat = 1:2
-  )
-)
-
-keys <- c("block", "treatment", "location", "quadrat")
-```
-
-```{r audit-quadrat-coverage, include=FALSE}
-missing_quadrats <- anti_join(
-  expected_quadrats,
-  quadrat_data,
-  by = keys
-)
-
-unexpected_quadrats <- anti_join(
-  quadrat_data,
-  expected_quadrats,
-  by = keys
-)
-
-save_csv(missing_quadrats, "missing_quadrats.csv")
-save_csv(unexpected_quadrats, "unexpected_quadrats.csv")
-
-if (
-  nrow(missing_quadrats) > 0 ||
-  nrow(unexpected_quadrats) > 0
-) {
-  stop(
-    "Check the quadrat audit files. ",
-    "Do not replace missing quadrats with zero."
-  )
-}
-
-knitr::kable(
-  data.frame(
-    Expected = nrow(expected_quadrats),
-    Observed = nrow(quadrat_data),
-    Missing = nrow(missing_quadrats),
-    Unexpected = nrow(unexpected_quadrats)
-  ),
-  caption = "Observed quadrats compared with the sampling plan."
-)
-```
-
-```{r calculate-plot-means, include=FALSE}
-# One mean per experimental plot and sampling location.
-plot_data <- quadrat_data %>%
-  group_by(block, treatment, location) %>%
-  summarise(
-    n_quadrats = n(),
-    across(
-      c(
-        identified_weed_g_m2,
-        unknown_weed_g_m2,
-        volunteer_g_m2,
-        weed_g_m2,
-        recorded_total_g_m2
-      ),
-      mean
-    ),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    block = factor(
-      paste0("B", block),
-      levels = paste0("B", 1:4)
-    ),
-    treatment = factor(
-      paste0("T", treatment),
-      levels = treatment_levels
-    )
-  )
-
-if (
-  any(
-    plot_data$n_quadrats !=
-      ifelse(plot_data$treatment == "T1", 4L, 2L)
-  )
-) {
-  stop("Expected four quadrats for T1 and two per location for T2-T4.")
-}
-
-plot_data %>%
-  filter(block == "B1", treatment == "T2") %>%
-  select(location, n_quadrats, weed_g_m2) %>%
-  knitr::kable(
-    digits = 2,
-    col.names = c("Location", "Quadrats", "Mean weeds (g/m2)"),
-    caption = "Block 1, T2. Plot means from the quadrat densities above."
-  )
-```
-
-```{r export-biomass-data, include=FALSE}
-save_csv(quadrat_data, "quadrat_biomass_components.csv")
-save_csv(plot_data, "plot_biomass_components.csv")
-
-writeLines(
-  c(
-    paste("Source:", github_url),
-    paste(
-      "Downloaded at UTC:",
-      downloaded_at_utc
-    ),
-    paste(
-      "Workbook MD5:",
-      unname(tools::md5sum(excel_file))
-    ),
-    "T1: no broccoli or cover crop planted; four 0.16 m2 quadrats per block; cut at 8 cm.",
-    "T2: mowing at -1, +3 and +6 weeks relative to transplanting.",
-    "T3: mowing at -1 and +6 weeks. T4: mowing at -1 week.",
-    "Total weeds include identified and unknown weeds; volunteers and cover crops are excluded.",
-    "TRFAL is displayed as Berseem clover; existing CLOVER records remain Volunteer clover.",
-    "RYE and CEREAL RYE are sown cover crops. Missing species records are not measured zeros.",
-    paste(
-      "Recorded cereal-rye rows:",
-      sum(analysis_records$species_label == "Cereal rye")
-    )
-  ),
-  file.path(output_dir, "data_source.txt")
+stopifnot(
+  nrow(plot_data) == 28L,
+  !anyNA(plot_data[c("block", "treatment", "location")]),
+  !anyDuplicated(plot_data[c("block", "treatment", "location")]),
+  all(is.finite(plot_data$weed_g_m2)),
+  sum(plot_data$n_quadrats) == 64L
 )
 ```
 
@@ -856,27 +451,6 @@ print(results[["Cover crop"]]$figure)
 
 The table gives the dry biomass of each sown species for the quadrats in which it was recorded.
 
-```{r recorded-cover-crop, include=FALSE}
-cc_records <- analysis_records %>%
-  filter(component == "Cover crop") %>%
-  group_by(block, treatment, location, quadrat, species_label) %>%
-  summarise(
-    Area_m2 = first(area_m2),
-    Weight_g = sum(weight_g),
-    .groups = "drop"
-  ) %>%
-  transmute(
-    Block = paste0("B", block),
-    Treatment = paste0("T", treatment),
-    Location = location,
-    Quadrat = quadrat,
-    Species = species_label,
-    Area_m2,
-    Weight_g,
-    Biomass_g_m2 = Weight_g / Area_m2
-  )
-```
-
 ```{r recorded-cover-crop-table, results='asis'}
 if (nrow(cc_records) > 0L) {
   show_table(cc_records, "Recorded sown cover-crop biomass", digits = 3,
@@ -887,8 +461,6 @@ if (nrow(cc_records) > 0L) {
 } else {
   cat("The workbook contains no sown cover-crop biomass entries.\n\n")
 }
-
-save_csv(cc_records, "recorded_cover_crop_biomass.csv")
 ```
 
 ## Volunteer clover and unknown weeds
