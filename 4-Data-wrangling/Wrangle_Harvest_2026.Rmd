@@ -102,12 +102,14 @@ duplicate_row <- duplicated(weed_raw[setdiff(names(weed_raw), "excel_row")])
 save_audit(weed_raw[duplicate_row, ], "Weed_exact_duplicates")
 if (any(duplicate_row)) stop("Review Weed_exact_duplicates.csv.")
 
+sampling_locations <- c("Broccoli" = "Intrarow", "Cover crop" = "Interrow",
+                        "Intrarow" = "Intrarow", "Interrow" = "Interrow")
 records <- weed_raw |>
   mutate(
     collection_date = as.Date(collection_date),
     weighing_date = as.Date(weighing_date),
-    location = trimws(source_location),
-    location = if_else(treatment == 1, "Cover crop", location),
+    location = if_else(treatment == 1, "Interrow",
+                       unname(sampling_locations[trimws(source_location)])),
     species = toupper(trimws(gsub("[[:space:]]+", " ", source_species))),
     species = recode(
       species,
@@ -115,9 +117,9 @@ records <- weed_raw |>
       "UNKNOWNN DICOTS" = "UNKNOWN DICOTS"
     ),
     weight_g = source_weight_g,
-    area_m2 = if_else(location == "Broccoli", 0.28, 0.16),
-    cutting_height_cm = if_else(location == "Broccoli", 0, 8),
-    stratum = if_else(location == "Broccoli", "Broccoli", "Cover_crop"),
+    area_m2 = if_else(location == "Intrarow", 0.28, 0.16),
+    cutting_height_cm = if_else(location == "Intrarow", 0, 8),
+    stratum = location,
     sample_id = paste0("B", block, "_T", treatment, "_", stratum, "_Q", quadrat)
   )
 
@@ -125,7 +127,7 @@ stopifnot(
   all(records$block %in% 1:4),
   all(records$treatment %in% 1:4),
   all(records$quadrat %in% 1:4),
-  all(records$location %in% c("Broccoli", "Cover crop")),
+  all(records$location %in% c("Intrarow", "Interrow")),
   !anyNA(records$collection_date),
   all(!is.na(records$species) & nzchar(records$species)),
   all(is.finite(records$weight_g) & records$weight_g >= 0)
@@ -136,7 +138,7 @@ stopifnot(
 target <- which(
   records$collection_date == as.Date("2026-09-11") &
   records$block == 4 & records$treatment == 4 &
-  records$location == "Cover crop" & records$quadrat == 2 &
+  records$location == "Interrow" & records$quadrat == 2 &
   records$species == "UNKNOWN MONOCOTS"
 )
 
@@ -192,7 +194,7 @@ save_audit(
 )
 save_audit(
   filter(records, is.na(source_area_m2) | abs(source_area_m2 - area_m2) > 1e-8 |
-           is.na(source_location) | source_location != location),
+           !coalesce(unname(sampling_locations[trimws(source_location)]) == location, FALSE)),
   "Sampling_corrections"
 )
 save_audit(filter(records, is_unknown_weed), "Unknown_weed_records")
@@ -204,9 +206,9 @@ samples <- records |>
            area_m2, cutting_height_cm, collection_date)
 
 expected <- bind_rows(
-  expand_grid(block = 1:4, treatment = 1L, location = "Cover crop", quadrat = 1:4),
+  expand_grid(block = 1:4, treatment = 1L, location = "Interrow", quadrat = 1:4),
   expand_grid(block = 1:4, treatment = 2:4,
-              location = c("Broccoli", "Cover crop"), quadrat = 1:2)
+              location = c("Intrarow", "Interrow"), quadrat = 1:2)
 )
 
 sample_keys <- c("block", "treatment", "location", "quadrat")
@@ -290,7 +292,7 @@ community_samples <- samples |>
     Sample_ID = sample_id,
     Block = paste0("B", block), Treatment = paste0("T", treatment),
     Quadrat = quadrat,
-    Location = if_else(treatment == 1, "Weedy check", location),
+    Location = location,
     Stratum = stratum, Area_m2 = area_m2,
     Cutting_height_cm = cutting_height_cm, Collection_date = collection_date
   )

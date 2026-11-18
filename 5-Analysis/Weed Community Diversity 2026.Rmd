@@ -42,12 +42,19 @@ if (length(wrangling_dir) != 1L) {
 
 clean_dir <- file.path(wrangling_dir, "Clean")
 
-read_clean <- function(name) {
+strata <- c("Interrow", "Intrarow")
+
+read_clean <- function(name, position_column = NULL) {
   path <- file.path(clean_dir, paste0(name, ".csv"))
   if (!file.exists(path)) {
     stop("Missing clean input: ", path, ". Knit Wrangle_Harvest_2026.Rmd first.")
   }
-  utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
+  if (!is.null(position_column) && !setequal(x[[position_column]], strata)) {
+    stop(name, ".csv must contain the Interrow and Intrarow sampling positions in ",
+         position_column, ". Knit Wrangle_Harvest_2026.Rmd first.")
+  }
+  x
 }
 
 out <- file.path(analysis_dir, "Weed Community Diversity")
@@ -68,14 +75,14 @@ show_table <- function(x, digits = 4) {
 metrics <- c("Richness", "Inverse_Simpson", "Simpson_evenness")
 
 category_summary <- read_clean("Category_mass_summary")
-category_treatments <- read_clean("Category_biomass_treatment_summary")
+category_treatments <- read_clean("Category_biomass_treatment_summary", "Stratum")
 
-plot_means <- read_clean("Plot_mean_indices") |>
+plot_means <- read_clean("Plot_mean_indices", "Stratum") |>
   mutate(
     Block = factor(Block, levels = paste0("B", 1:4)),
     Treatment = factor(Treatment, levels = paste0("T", 1:4))
   )
-sp_means <- read_clean("Species_composition_all_taxa") |>
+sp_means <- read_clean("Species_composition_all_taxa", "Stratum") |>
   mutate(Treatment = factor(Treatment, levels = paste0("T", 1:4)))
 
 stopifnot(
@@ -123,7 +130,7 @@ show_table(filter(plot_means, Analysis == "Total weeds"))
 
 ## Biomass by broad category
 
-A category absent from a sampled quadrat contributes zero recorded mass. Treatment summaries average quadrats within each plot, then give the four blocks equal weight. Broccoli rows and living-mulch strips are summarized separately.
+A category absent from a sampled quadrat contributes zero recorded mass. Treatment summaries average quadrats within each plot, then give the four blocks equal weight. The summaries are reported separately for the Intrarow and Interrow sampling positions.
 
 ```{r category-biomass-results}
 show_table(select(
@@ -134,7 +141,7 @@ show_table(select(
 
 ## Weed community composition at harvest
 
-Each panel shows the five identified weeds with the highest mean dry biomass in its sampling stratum. Rankings give equal weight to each treatment mean: T2–T4 in broccoli rows and T1–T4 in the interrow comparison. Others pools the remaining identified species and all unidentified weed groups. The primary diversity indices use the full weed community.
+Each panel shows the five identified weeds with the highest mean dry biomass in its sampling stratum. Rankings give equal weight to the means of T2–T4 for Intrarow and T1–T4 for Interrow. The T1 weedy control was sampled only for the Interrow comparison. Others pools the remaining identified species and all unidentified weed groups. The primary diversity indices use the full weed community.
 
 ```{r composition-display-groups}
 sp_top <- sp_means |>
@@ -174,9 +181,9 @@ write_csv(sp_totals, "Species_composition_total_weeds.csv")
 ```
 
 ```{r composition-total-labels}
-biomass_plots <- read_clean("plot_biomass_components") |>
+biomass_plots <- read_clean("plot_biomass_components", "location") |>
+  rename(Stratum = location) |>
   mutate(
-    Stratum = recode(location, "Cover crop" = "Cover_crop", "Broccoli" = "Broccoli"),
     Block = factor(block), Treatment = factor(treatment)
   )
 
@@ -257,17 +264,17 @@ make_species_plot <- function(stratum, subtitle) {
 ```
 
 ```{r composition-interrow-figure, fig.width=11, fig.height=7}
-sp_cc_plot <- make_species_plot(
-  "Cover_crop", "September 2026 | Living-mulch strips and weedy control"
+sp_interrow_plot <- make_species_plot(
+  "Interrow", "September 2026 | Interrow (T1 weedy control and T2–T4)"
 )
-print(sp_cc_plot)
+print(sp_interrow_plot)
 ```
 
-```{r composition-broccoli-figure, fig.width=11, fig.height=7}
-sp_broccoli_plot <- make_species_plot(
-  "Broccoli", "September 2026 | Broccoli rows"
+```{r composition-intrarow-figure, fig.width=11, fig.height=7}
+sp_intrarow_plot <- make_species_plot(
+  "Intrarow", "September 2026 | Intrarow (T2–T4)"
 )
-print(sp_broccoli_plot)
+print(sp_intrarow_plot)
 ```
 
 ```{r export-composition-figures, include=FALSE}
@@ -275,8 +282,8 @@ graph_dir <- file.path(out, "Graph")
 dir.create(graph_dir, recursive = TRUE, showWarnings = FALSE)
 
 sp_figures <- list(
-  Weed_species_composition_T1_T4 = sp_cc_plot,
-  Weed_species_composition_Broccoli_T2_T4 = sp_broccoli_plot
+  Weed_species_composition_Interrow_T1_T4 = sp_interrow_plot,
+  Weed_species_composition_Intrarow_T2_T4 = sp_intrarow_plot
 )
 
 for (nm in names(sp_figures)) {
@@ -294,14 +301,14 @@ for (nm in names(sp_figures)) {
 
 ## Mowing effects on weed diversity
 
-The primary comparison uses the three planted mowing treatments. T2 was mown one week before transplanting and at weeks 3 and 6 afterward. T3 was mown one week before and at week 6 afterward. T4 was mown one week before transplanting. The secondary interrow comparison includes the unplanted weedy control (T1).
+The primary comparison uses the three planted mowing treatments. T2 was mown one week before transplanting and at weeks 3 and 6 afterward. T3 was mown one week before and at week 6 afterward. T4 was mown one week before transplanting. The secondary Interrow comparison includes the unplanted weedy control (T1).
 
 ### Statistical choices and their rationale
 
 | Choice | Rationale in this experiment | Reference |
 |:--|:--|:--|
 | Response and unit | The response is the mean quadrat index of a plot. Each of the four blocks contributes one plot per treatment. This gives each randomized plot equal weight, including T1 plots with four quadrats. | Hurlbert (1984) |
-| Sampling stratum | Intrarow and interrow samples differ in quadrat area and cutting height. Separate models compare treatments measured with the same protocol. | 2026 field sampling design |
+| Sampling stratum | Intrarow and Interrow samples differ in quadrat area and cutting height. Separate models compare treatments measured with the same protocol. | 2026 field sampling design |
 | Model | Fit each index on its original scale as `index ~ Block + Treatment`. The fixed block term accounts for differences among the four field blocks. One plot per block–treatment cell supports an additive model. Collection date is determined by block. | NIST, *Randomized block designs* |
 | Primary test statistic | The treatment F statistic compares between-treatment variation with residual variation after accounting for block. It tests for differences in any direction. | NIST, *Randomized block designs* |
 | Randomization and exact p value | Conditional on the T1 position, permute the three planted treatment labels only within their own block. Enumerate all \((3!)^4=1,296\) assignments. The exact p value is the fraction with F at least as large as observed under the sharp null of no plot-level treatment effect. | Anderson & ter Braak (2003) |
@@ -448,7 +455,6 @@ run_family <- function(analysis, strata, treatments, use_exact) {
 ```
 
 ```{r primary-models}
-strata <- c("Cover_crop", "Broccoli")
 planted <- c("T2", "T3", "T4")
 
 primary <- run_family("Total weeds", strata, planted, TRUE)
@@ -474,7 +480,7 @@ show_table(sensitivity$tests)
 This exploratory comparison uses the 0.16 m² quadrats cut at 8 cm. Contrasts with T1 reflect planting and mowing together. T1 contributes four quadrats per plot and T2–T4 contribute two, so the precision of a plot mean can differ among treatments. This analysis reports the parametric treatment test.
 
 ```{r secondary-models}
-secondary <- run_family("Total weeds", "Cover_crop", paste0("T", 1:4), FALSE)
+secondary <- run_family("Total weeds", "Interrow", paste0("T", 1:4), FALSE)
 show_table(secondary$tests)
 show_table(secondary$emmeans)
 show_table(secondary$pairs)
@@ -489,7 +495,7 @@ export_family <- function(x, prefix) {
 
 export_family(primary, "Primary_T2_T4")
 export_family(sensitivity, "Sensitivity_identified_codes_T2_T4")
-export_family(secondary, "Secondary_T1_T4_Cover_crop")
+export_family(secondary, "Secondary_T1_T4_Interrow")
 write_csv(primary$diagnostics, "Primary_model_diagnostics.csv")
 ```
 
@@ -508,16 +514,15 @@ long <- do.call(rbind, lapply(metrics, function(m) {
 
 em <- rbind(
   secondary$emmeans,
-  subset(primary$emmeans, Stratum == "Broccoli")
+  subset(primary$emmeans, Stratum == "Intrarow")
 )
 
 metric_labels <- c("Richness", "Inverse Simpson", "Simpson evenness")
 long$Metric <- factor(long$Metric, levels = metrics, labels = metric_labels)
 em$Metric <- factor(em$Metric, levels = metrics, labels = metric_labels)
 
-stratum_labels <- c("Interrow and control", "Broccoli rows")
-long$Stratum <- factor(long$Stratum, levels = strata, labels = stratum_labels)
-em$Stratum <- factor(em$Stratum, levels = strata, labels = stratum_labels)
+long$Stratum <- factor(long$Stratum, levels = strata)
+em$Stratum <- factor(em$Stratum, levels = strata)
 ```
 
 ```{r diversity-figure, fig.width=11, fig.height=7}

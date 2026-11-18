@@ -107,9 +107,9 @@ biomass are summarized separately.
 
 ## Sampling and statistical methods
 
-- **Broccoli rows (intrarow).** In T2–T4, two 0.28 m² quadrats per plot were cut at ground level.
-- **Living-mulch strips (interrow).** In T2–T4, two 0.16 m² quadrats per plot were cut at 8 cm.
-- **Weedy control (T1).** Four 0.16 m² quadrats per plot were cut at 8 cm.
+- **Intrarow.** In T2–T4, two 0.28 m² quadrats per plot were cut at ground level.
+- **Interrow.** In T2–T4, two 0.16 m² quadrats per plot were cut at 8 cm.
+- **Weedy control (T1, grouped with Interrow).** Four 0.16 m² quadrats per plot were cut at 8 cm.
 
 Weed masses are summed within each observed quadrat and divided
 by quadrat area. Quadrat densities are averaged within each plot
@@ -117,7 +117,7 @@ and sampling location. Two dry weighings of unidentified monocots from block 4,
 T4, interrow quadrat 2 were combined (1.34 g + 0.07 g = 1.41 g).
 
 The plot is the experimental unit. The intrarow model uses 12 plot means
-from T2–T4. The interrow and control model uses 16 plot means from T1–T4.
+from T2–T4. The interrow model uses 16 plot means from T1–T4.
 Each model includes treatment and block as categorical fixed effects.
 Tukey-adjusted comparisons cover all treatment pairs within each model.
 
@@ -149,7 +149,7 @@ treatment_colours <- c(
   T2 = "#4A8862"
 )
 
-locations <- c("Broccoli", "Cover crop")
+locations <- c("Intrarow", "Interrow")
 ```
 
 ```{r read-clean-biomass, include=FALSE}
@@ -159,6 +159,12 @@ plot_data <- read_clean("plot_biomass_components") |>
     treatment = factor(treatment, levels = treatment_levels)
   )
 cc_records <- read_clean("recorded_cover_crop_biomass")
+
+if (!setequal(plot_data$location, locations) ||
+    !("Location" %in% names(cc_records)) ||
+    !all(cc_records$Location %in% locations)) {
+  stop("Knit Wrangle_Harvest_2026.Rmd to refresh the clean biomass tables with Intrarow and Interrow sampling labels.")
+}
 
 stopifnot(
   nrow(plot_data) == 28L,
@@ -213,7 +219,7 @@ fit_tables <- function(d, response) {
 ```{r weed-model-inputs, include=FALSE}
 model_data <- setNames(lapply(locations, function(loc) {
   d <- droplevels(filter(plot_data, location == loc))
-  treatments <- if (loc == "Broccoli") c("T2", "T3", "T4") else paste0("T", 1:4)
+  treatments <- if (loc == "Intrarow") c("T2", "T3", "T4") else paste0("T", 1:4)
   stopifnot(
     setequal(as.character(d$treatment), treatments),
     setequal(as.character(d$block), paste0("B", 1:4)),
@@ -268,11 +274,8 @@ figure_subtitle <- function(primary) {
 }
 
 figure_captions <- c(
-  "Broccoli" = "Each plot mean represents two ground-level quadrats.",
-  "Cover crop" = paste0(
-    "All quadrats were cut at 8 cm.",
-    " Each plot mean represents four quadrats for T1 and two for T2-T4."
-  )
+  "Intrarow" = "Each plot mean represents two ground-level quadrats.",
+  "Interrow" = "Quadrats were cut at 8 cm (four per T1 weedy control plot and two per T2-T4 plot)."
 )
 ```
 
@@ -291,11 +294,7 @@ make_weed_figure <- function(d, primary, location_name) {
     scale_shape_manual(values = c(16, 17, 15, 3)) +
     expand_limits(y = 0) +
     labs(
-      title = paste(
-        "Total weed biomass:",
-        location_name,
-        "sampling area"
-      ),
+      title = paste(location_name, "weed biomass"),
       subtitle = figure_subtitle(primary),
       x = "Treatment and mowing weeks relative to transplanting",
       y = expression("Total weed biomass (g " * m^{-2} * ")"),
@@ -328,7 +327,7 @@ results <- setNames(lapply(locations, function(loc) {
 
 ```{r export-weed-model-tables, include=FALSE}
 for (loc in locations) {
-  prefix <- tolower(gsub(" ", "_", loc))
+  prefix <- tolower(loc)
   for (model_name in c("primary", "log")) {
     model <- results[[loc]][[model_name]]
     if (is.null(model)) next
@@ -342,7 +341,7 @@ for (loc in locations) {
 
 ```{r export-weed-figures, include=FALSE}
 for (loc in locations) {
-  prefix <- tolower(gsub(" ", "_", loc))
+  prefix <- tolower(loc)
   base_path <- file.path(output_dir, paste0(prefix, "_weed_biomass"))
   figure <- results[[loc]]$figure
   ggsave(paste0(base_path, ".png"), plot = figure, width = 8,
@@ -374,22 +373,23 @@ report_tables <- function(z, label, include_means = TRUE) {
 }
 ```
 
-## Weed biomass in broccoli rows
+## Intrarow weed biomass
 
-```{r broccoli-results, results='asis'}
+```{r intrarow-results, results='asis'}
 report_tables(
-  results[["Broccoli"]]$primary,
-  "Broccoli area"
+  results[["Intrarow"]]$primary,
+  "Intrarow"
 )
 ```
 
-```{r broccoli-weed-figure}
-print(results[["Broccoli"]]$figure)
+```{r intrarow-weed-figure}
+print(results[["Intrarow"]]$figure)
 ```
 
 ### Weedy control reference
 
-The tables give each block's T1 estimate, followed by the mean and SE across blocks.
+The tables show the T1 weedy control biomass in each block and the mean and SE
+across blocks. These plots enter the interrow model.
 
 ```{r t1-reference-summary, include=FALSE}
 t1_reference <- plot_data %>%
@@ -434,17 +434,17 @@ save_csv(
 )
 ```
 
-## Weed biomass in living-mulch strips and the weedy control
+## Interrow weed biomass, including the T1 weedy control
 
-```{r cover-crop-results, results='asis'}
+```{r interrow-results, results='asis'}
 report_tables(
-  results[["Cover crop"]]$primary,
-  "Cover-crop area"
+  results[["Interrow"]]$primary,
+  "Interrow"
 )
 ```
 
-```{r cover-crop-weed-figure}
-print(results[["Cover crop"]]$figure)
+```{r interrow-weed-figure}
+print(results[["Interrow"]]$figure)
 ```
 
 ## Recorded cover-crop biomass
@@ -506,16 +506,16 @@ plot_diagnostics <- function(location) {
 }
 ```
 
-### Broccoli rows
+### Intrarow
 
-```{r broccoli-diagnostics, fig.height=6}
-plot_diagnostics("Broccoli")
+```{r intrarow-diagnostics, fig.height=6}
+plot_diagnostics("Intrarow")
 ```
 
-### Living-mulch strips and the control
+### Interrow, including the T1 weedy control
 
-```{r cover-crop-diagnostics, fig.height=6}
-plot_diagnostics("Cover crop")
+```{r interrow-diagnostics, fig.height=6}
+plot_diagnostics("Interrow")
 ```
 
 ```{r normality-tests}
@@ -575,8 +575,8 @@ for (loc in locations) {
 ## Harvest results
 
 ```{r harvest-result-values, include=FALSE}
-row_model <- results[["Broccoli"]]$primary
-strip_model <- results[["Cover crop"]]$primary
+intrarow_model <- results[["Intrarow"]]$primary
+interrow_model <- results[["Interrow"]]$primary
 
 mean_list <- function(z, treatments) {
   values <- z$means$emmean[match(treatments, as.character(z$means$treatment))]
@@ -597,13 +597,13 @@ tukey_p <- function(z, left, right) {
 }
 ```
 
-In broccoli rows, adjusted mean weed biomass (g/m²) was `r mean_list(row_model, c("T2", "T3", "T4"))`
-(treatment test, *p* = `r treatment_p(row_model)`). The Tukey-adjusted *p* values for T2 versus T4,
-T3 versus T4 and T2 versus T3 were `r tukey_p(row_model, "T2", "T4")`,
-`r tukey_p(row_model, "T3", "T4")` and `r tukey_p(row_model, "T2", "T3")`, respectively.
+Adjusted mean intrarow weed biomass (g/m²) was `r mean_list(intrarow_model, c("T2", "T3", "T4"))`
+(treatment test, *p* = `r treatment_p(intrarow_model)`). The Tukey-adjusted *p* values for T2 versus T4,
+T3 versus T4 and T2 versus T3 were `r tukey_p(intrarow_model, "T2", "T4")`,
+`r tukey_p(intrarow_model, "T3", "T4")` and `r tukey_p(intrarow_model, "T2", "T3")`, respectively.
 
-For the living-mulch strips and the weedy control, adjusted mean weed biomass (g/m²) was
-`r mean_list(strip_model, c("T1", "T2", "T3", "T4"))` (treatment test, *p* = `r treatment_p(strip_model)`).
+Adjusted mean interrow weed biomass (g/m²), including the T1 weedy control, was
+`r mean_list(interrow_model, c("T1", "T2", "T3", "T4"))` (treatment test, *p* = `r treatment_p(interrow_model)`).
 
 ```{r save-session-information, include=FALSE}
 capture.output(
